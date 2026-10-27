@@ -91,8 +91,12 @@ function update_input(_g) {
 
 	// Zoom toward the cursor (not while the cursor is over the HUD)
 	var _wheel = mouse_wheel_up() - mouse_wheel_down();
+	if (global.options.invertZoom == 1) {
+		_wheel = -_wheel;
+	}
+	var _zoomStep = 1 + 0.03 * global.options.zoomSpeed;
 	if ((_wheel != 0) && !hud_captures_mouse(_g, _mx, _my)) {
-		_g.zoom = clamp(_g.zoom * power(1.15, _wheel), MIN_ZOOM, MAX_ZOOM);
+		_g.zoom = clamp(_g.zoom * power(_zoomStep, _wheel), MIN_ZOOM, MAX_ZOOM);
 		_g.camX = _wx - _mx / _g.zoom;
 		_g.camY = _wy - _my / _g.zoom;
 	}
@@ -109,6 +113,23 @@ function update_input(_g) {
 	if (_g.panning) {
 		_g.camX = _g.panAnchorX - _mx / _g.zoom;
 		_g.camY = _g.panAnchorY - _my / _g.zoom;
+	}
+	// Edge scrolling (option)
+	if ((global.options.edgeScroll == 1) && !_g.panning && !_g.dragging && window_has_focus()) {
+		var _edge = 8;
+		var _scroll = (300 + global.options.panSpeed * 60) * delta_time / 1000000 / _g.zoom;
+		if (_mx <= _edge) {
+			_g.camX -= _scroll;
+		}
+		if (_mx >= _g.screenW - _edge) {
+			_g.camX += _scroll;
+		}
+		if (_my <= _edge) {
+			_g.camY -= _scroll;
+		}
+		if (_my >= _g.screenH - _edge) {
+			_g.camY += _scroll;
+		}
 	}
 	camera_refresh_view(_g);
 

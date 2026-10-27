@@ -1,12 +1,16 @@
 // Create event of obj_game (place one instance of obj_game in your room)
 
-// Load all static data (biomes, units, nations, map presets)
+// Load all static data (biomes, units, nations, map presets), then the saved options
 init_game_data();
+load_options();
 
 // Keep the pixel look crisp
 gpu_set_texfilter(false);
 
-// Game settings. These will come from a lobby screen later.
+// The game starts on the main menu
+gameState = GAME_STATE.MENU;
+
+// Game settings. The menu changes mapPreset and seed, the rest will come from a lobby later.
 // nationCount: nations in the game (2 to 8)
 // botCount: how many of those are bots
 // vacantCount: how many are left open for players to join
@@ -18,7 +22,7 @@ settings = {
 	mapPreset: 0,
 	mapWidth: 64,
 	mapHeight: 64,
-	seed: irandom(999999)
+	seed: 0
 };
 
 // Camera, input and UI state
@@ -58,14 +62,9 @@ placeGy = 0;
 placeAxis = 0;
 placeMsg = "";
 
-// Build the world and start the camera on our capital
-world = create_world(settings);
-localNation = world.localNation;
+// There is no world until the menu builds one (the menu shows a simulated game)
+world = undefined;
+localNation = NO_ID;
 camera_init(id);
-
-if (localNation != NO_ID) {
-	var _capital = bot_get_first_city(world, localNation);
-	if (_capital != undefined) {
-		camera_focus_tile(id, _capital.gx, _capital.gy);
-	}
-}
+menu_init(id);
+menu_start_demo(id);

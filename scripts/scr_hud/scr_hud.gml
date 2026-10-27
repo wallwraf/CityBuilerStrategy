@@ -600,7 +600,7 @@ function draw_hud(_g) {
 
 	// Hover tooltip
 	for (var _t = 0; _t < array_length(_buttons); _t++) {
-		if ((_buttons[_t].tip != "") && point_in_button(_buttons[_t], _mx, _my)) {
+		if ((global.options.tooltips == 1) && (_buttons[_t].tip != "") && point_in_button(_buttons[_t], _mx, _my)) {
 			draw_tooltip(string_replace_all(_buttons[_t].tip, "\\n", "\n"), _mx, _my, _g.screenW, _g.screenH);
 			break;
 		}

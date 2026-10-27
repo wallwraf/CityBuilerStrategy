@@ -137,18 +137,19 @@ function draw_world(_g) {
 function draw_border_edges(_world, _gx, _gy, _cx, _cy, _owner, _colour) {
 	var _hw = TILE_W / 2;
 	var _hh = TILE_H / 2;
+	var _width = (global.options.thickBorders == 1) ? 5 : 3;
 	// Neighbour (gx+1, gy) is down-right, (gx, gy+1) down-left, (gx-1, gy) up-left, (gx, gy-1) up-right
 	if (get_border_owner_safe(_world, _gx + 1, _gy) != _owner) {
-		draw_line_width_colour(_cx + _hw, _cy, _cx, _cy + _hh, 3, _colour, _colour);
+		draw_line_width_colour(_cx + _hw, _cy, _cx, _cy + _hh, _width, _colour, _colour);
 	}
 	if (get_border_owner_safe(_world, _gx, _gy + 1) != _owner) {
-		draw_line_width_colour(_cx, _cy + _hh, _cx - _hw, _cy, 3, _colour, _colour);
+		draw_line_width_colour(_cx, _cy + _hh, _cx - _hw, _cy, _width, _colour, _colour);
 	}
 	if (get_border_owner_safe(_world, _gx - 1, _gy) != _owner) {
-		draw_line_width_colour(_cx - _hw, _cy, _cx, _cy - _hh, 3, _colour, _colour);
+		draw_line_width_colour(_cx - _hw, _cy, _cx, _cy - _hh, _width, _colour, _colour);
 	}
 	if (get_border_owner_safe(_world, _gx, _gy - 1) != _owner) {
-		draw_line_width_colour(_cx, _cy - _hh, _cx + _hw, _cy, 3, _colour, _colour);
+		draw_line_width_colour(_cx, _cy - _hh, _cx + _hw, _cy, _width, _colour, _colour);
 	}
 }
 
