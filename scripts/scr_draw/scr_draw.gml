@@ -122,6 +122,10 @@ function draw_world(_g) {
 			if (_unitId != NO_ID) {
 				draw_unit(_world.units[_unitId], id_in_list(_g.selectedUnitIds, _unitId));
 			}
+			var _ghostId = ds_grid_get(_world.ghostGrid, _gx, _gy);
+			if (_ghostId != NO_ID) {
+				draw_unit(_world.units[_ghostId], id_in_list(_g.selectedUnitIds, _ghostId));
+			}
 			var _wallX = ds_grid_get(_world.edgeGridX, _gx, _gy);
 			if (_wallX != NO_ID) {
 				draw_building(_world.buildings[_wallX], (_wallX == _g.selectedBuildingId), 1);

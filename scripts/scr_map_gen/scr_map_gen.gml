@@ -62,6 +62,7 @@ function create_world(_settings) {
 		borderDist: ds_grid_create(_w, _h),
 		cityGrid: ds_grid_create(_w, _h),
 		unitGrid: ds_grid_create(_w, _h),
+		ghostGrid: ds_grid_create(_w, _h),
 		buildingGrid: ds_grid_create(_w, _h),
 		// Walls and gates live on tile edges. edgeGridX holds the edge between (x, y) and (x + 1, y).
 		// edgeGridY holds the edge between (x, y) and (x, y + 1).
@@ -70,6 +71,7 @@ function create_world(_settings) {
 		pathGrid: ds_grid_create(_w, _h),
 		pathLinks: [],
 		battles: [],
+		rngState: max(1, ((_settings.seed * 2654435) + 987654321) & $7FFFFFFF),
 		combatTime: array_create(MAX_NATIONS, -9999),
 		audioEvents: [],
 		pathTotal: 0,
@@ -96,6 +98,7 @@ function create_world(_settings) {
 	ds_grid_clear(_world.borderDist, 999);
 	ds_grid_clear(_world.cityGrid, NO_ID);
 	ds_grid_clear(_world.unitGrid, NO_ID);
+	ds_grid_clear(_world.ghostGrid, NO_ID);
 	ds_grid_clear(_world.buildingGrid, NO_ID);
 	ds_grid_clear(_world.edgeGridX, NO_ID);
 	ds_grid_clear(_world.edgeGridY, NO_ID);
@@ -129,6 +132,7 @@ function destroy_world(_world) {
 	ds_grid_destroy(_world.pfParent);
 	ds_grid_destroy(_world.pfClosed);
 	ds_grid_destroy(_world.pathGrid);
+	ds_grid_destroy(_world.ghostGrid);
 }
 
 function generate_terrain(_world) {

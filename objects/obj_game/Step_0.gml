@@ -3,6 +3,7 @@
 var _dt = min(delta_time / 1000000, 0.1);
 
 audio_update(id, _dt);
+net_step(id);
 camera_update_size(id, false);
 
 if (toastTimer > 0) {
@@ -30,7 +31,7 @@ if (keyboard_check_pressed(vk_escape) && (placeType == NO_ID) && (array_length(s
 }
 
 update_input(id);
-update_world(world, _dt);
+net_update_world(id, _dt);
 
 // F1 toggles the debug overlay (mouse and camera numbers)
 if (keyboard_check_pressed(vk_f1)) {

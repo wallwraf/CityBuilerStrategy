@@ -143,6 +143,10 @@ function edge_between(_x1, _y1, _x2, _y2) {
 // ------------------------------------------------------------
 
 function building_blocks_unit(_b, _unit) {
+	// Envoys slip through every gate
+	if (global.unitStats[_unit.type].diplomat && (_b.type == BUILDING.GATE)) {
+		return false;
+	}
 	var _def = global.buildingDefs[_b.type];
 	if (!_def.solid) {
 		return false;
@@ -172,6 +176,10 @@ function edge_blocks_unit(_world, _ex, _ey, _axis, _unit) {
 
 // Can this unit stand on this kind of terrain
 function unit_terrain_ok(_world, _unit, _gx, _gy) {
+	// Envoys can stand on land or water (they turn into a boat on water)
+	if (global.unitStats[_unit.type].diplomat) {
+		return tile_is_water(_world, _gx, _gy) || tile_is_walkable(_world, _gx, _gy);
+	}
 	if (global.unitStats[_unit.type].domain == DOMAIN.WATER) {
 		return tile_is_water(_world, _gx, _gy);
 	}

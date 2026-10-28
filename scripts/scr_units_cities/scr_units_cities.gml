@@ -43,10 +43,14 @@ function create_unit(_world, _owner, _type, _gx, _gy) {
 		// Tribe units wander around the tile they spawned on
 		homeGx: _gx,
 		homeGy: _gy,
-		wanderTimer: random_range(2, 6)
+		wanderTimer: sim_random_range(_world, 2, 6)
 	};
 	array_push(_world.units, _unit);
-	ds_grid_set(_world.unitGrid, _gx, _gy, _unit.unitId);
+	if (_stats.diplomat) {
+		ds_grid_set(_world.ghostGrid, _gx, _gy, _unit.unitId);
+	} else {
+		ds_grid_set(_world.unitGrid, _gx, _gy, _unit.unitId);
+	}
 	return _unit;
 }
 
@@ -58,6 +62,9 @@ function kill_unit(_world, _unit, _killerOwner) {
 	_unit.order = ORDER.NONE;
 	if (ds_grid_get(_world.unitGrid, _unit.gx, _unit.gy) == _unit.unitId) {
 		ds_grid_set(_world.unitGrid, _unit.gx, _unit.gy, NO_ID);
+	}
+	if (ds_grid_get(_world.ghostGrid, _unit.gx, _unit.gy) == _unit.unitId) {
+		ds_grid_set(_world.ghostGrid, _unit.gx, _unit.gy, NO_ID);
 	}
 	if ((_killerOwner >= 0) && (_killerOwner != _unit.owner)) {
 		_world.nationStates[_killerOwner].kills++;
@@ -180,16 +187,30 @@ function get_unit_at(_world, _gx, _gy) {
 	}
 	var _id = ds_grid_get(_world.unitGrid, _gx, _gy);
 	if (_id == NO_ID) {
+		_id = ds_grid_get(_world.ghostGrid, _gx, _gy);
+	}
+	if (_id == NO_ID) {
 		return undefined;
 	}
 	return _world.units[_id];
 }
 
 function move_unit_to(_world, _unit, _gx, _gy) {
-	ds_grid_set(_world.unitGrid, _unit.gx, _unit.gy, NO_ID);
-	_unit.gx = _gx;
-	_unit.gy = _gy;
-	ds_grid_set(_world.unitGrid, _gx, _gy, _unit.unitId);
+	if (unit_is_ghost(_unit)) {
+		if (ds_grid_get(_world.ghostGrid, _unit.gx, _unit.gy) == _unit.unitId) {
+			ds_grid_set(_world.ghostGrid, _unit.gx, _unit.gy, NO_ID);
+		}
+		_unit.gx = _gx;
+		_unit.gy = _gy;
+		ds_grid_set(_world.ghostGrid, _gx, _gy, _unit.unitId);
+		// Envoys turn into a boat on water, and back into a walking envoy on land
+		_unit.type = tile_is_water(_world, _gx, _gy) ? UNIT_TYPE.ENVOY_BOAT : UNIT_TYPE.ENVOY;
+	} else {
+		ds_grid_set(_world.unitGrid, _unit.gx, _unit.gy, NO_ID);
+		_unit.gx = _gx;
+		_unit.gy = _gy;
+		ds_grid_set(_world.unitGrid, _gx, _gy, _unit.unitId);
+	}
 	// Passengers travel with the boat
 	for (var _c = 0; _c < array_length(_unit.cargo); _c++) {
 		var _passenger = _world.units[_unit.cargo[_c]];
@@ -494,7 +515,7 @@ function find_path(_world, _unit, _goalGx, _goalGy, _blockOccupied) {
 				if (!tile_in_bounds(_world, _nx, _ny) || (ds_grid_get(_world.pfClosed, _nx, _ny) == 1)) {
 					continue;
 				}
-				if (_blockOccupied && !((_nx == _goalGx) && (_ny == _goalGy))) {
+				if (_blockOccupied && !unit_is_ghost(_unit) && (_ny == _goalGy)) {
 					var _occupant = ds_grid_get(_world.unitGrid, _nx, _ny);
 					if ((_occupant != NO_ID) && (_occupant != _unit.unitId)) {
 						continue;
@@ -551,7 +572,7 @@ function unit_follow_path(_world, _unit) {
 		_py = _node[1];
 		// Fast units can hop over a unit in the way, but must land on an empty tile
 		var _occupant = ds_grid_get(_world.unitGrid, _px, _py);
-		if ((_occupant == NO_ID) || (_occupant == _unit.unitId)) {
+		if ((_occupant == NO_ID) || (_occupant == _unit.unitId) || unit_is_ghost(_unit)) {
 			_landing = _idx;
 		}
 	}
@@ -940,10 +961,10 @@ function update_tribe_wander(_world, _u) {
 	if (_world.time < _u.wanderTimer) {
 		return;
 	}
-	_u.wanderTimer = _world.time + random_range(3, 7);
+	_u.wanderTimer = _world.time + sim_random_range(_world, 3, 7);
 	for (var _try = 0; _try < 6; _try++) {
-		var _gx = _u.homeGx + irandom_range(-2, 2);
-		var _gy = _u.homeGy + irandom_range(-2, 2);
+		var _gx = _u.homeGx + sim_irandom_range(_world, -2, 2);
+		var _gy = _u.homeGy + sim_irandom_range(_world, -2, 2);
 		if (tile_distance(_gx, _gy, _u.gx, _u.gy) == 0) {
 			continue;
 		}
@@ -1050,6 +1071,7 @@ function make_command(_type, _owner) {
 		targetId: NO_ID,
 		targetNation: NO_ID,
 		flag: false,
+		text: "",
 		gx: 0,
 		gy: 0,
 		axis: 0
@@ -1339,6 +1361,26 @@ function apply_command(_world, _cmd) {
 
 		case CMD.ANSWER_OFFER:
 			return answer_offer(_world, _cmd.owner, _cmd.flag);
+			
+		case CMD.RENAME_CITY:
+			if ((_cmd.cityId < 0) || (_cmd.cityId >= array_length(_world.cities))) {
+				return "No such city";
+			}
+			var _renamed = _world.cities[_cmd.cityId];
+			if (_renamed.owner != _cmd.owner) {
+				return "Not your city";
+			}
+			var _newName = clean_city_name(_cmd.text);
+			if (_newName == "") {
+				return "Enter a name";
+			}
+			_renamed.cityName = _newName;
+			return "";
 	}
 	return "Unknown command";
+}
+
+// Envoys live on their own layer, so they walk through other units
+function unit_is_ghost(_unit) {
+	return global.unitStats[_unit.type].diplomat;
 }

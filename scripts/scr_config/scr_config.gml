@@ -111,6 +111,7 @@ enum UNIT_TYPE {
 	BATTLESHIP,
 	ENVOY,
 	TRAVELER_BOAT,
+	ENVOY_BOAT,
 	COUNT
 }
 
@@ -121,7 +122,8 @@ enum UNIT_SRC {
 	GARRISON,
 	HOSPITAL,
 	PORT,
-	EMBASSY
+	EMBASSY,
+	NONE
 }
 
 enum ABILITY {
@@ -244,7 +246,8 @@ enum CMD {
 	ANSWER_OFFER,
 	TOGGLE_CARGO,
 	CONNECT_PATH,
-	DEMOLISH
+	DEMOLISH,
+	RENAME_CITY
 }
 
 // Which side panel is open
@@ -273,6 +276,7 @@ enum UI_ACT {
 	TOGGLE_CARGO,
 	TOGGLE_DEMOLISH,
 	DEMOLISH,
+	RENAME_CITY,
 	NONE
 }
 
@@ -332,7 +336,8 @@ function define_unit(_type, _subtitle, _role, _desc, _source, _cost, _hp, _damag
 		reqBuildingLevel: 1,
 		reqResearch: NO_ID,
 		weight: 1,
-		capacity: 0
+		capacity: 0,
+		diplomat: false
 	};
 	var _names = variable_struct_get_names(_extra);
 	for (var _i = 0; _i < array_length(_names); _i++) {
@@ -390,8 +395,8 @@ function init_unit_stats() {
 	define_unit(UNIT_TYPE.BATTLESHIP, "Battleship", "Ranged", "Hits everything within 2 tiles, land troops included", UNIT_SRC.PORT, 420, 260, 24, 2, 1, 1.2, 1.6, { tier: 3, domain: DOMAIN.WATER });
 
 	// Embassy
-	define_unit(UNIT_TYPE.ENVOY, "Envoy", "Special", "Carries a peace treaty to a capital. Troops ignore it", UNIT_SRC.EMBASSY, 40, 15, 0, 1, 1, 1.0, 1.0, { tier: 0, passSolid: true, targetable: false, ability: ABILITY.ENVOY });
-
+	define_unit(UNIT_TYPE.ENVOY, "Envoy", "Special", "Carries a peace treaty to a capital. Walks through units and gates, and sails across water", UNIT_SRC.EMBASSY, 40, 15, 0, 1, 1, 1.0, 1.0, { tier: 0, passSolid: true, targetable: false, diplomat: true, ability: ABILITY.ENVOY });
+	define_unit(UNIT_TYPE.ENVOY_BOAT, "Envoy Boat", "Special", "An envoy at sea. Naval mines still sink it", UNIT_SRC.NONE, 40, 15, 0, 1, 1, 1.0, 1.0, { tier: 0, domain: DOMAIN.WATER, passSolid: true, targetable: false, diplomat: true, ability: ABILITY.ENVOY });
 	// Port: carries land units across the water (press E next to units to load them, E again to unload)
 	define_unit(UNIT_TYPE.TRAVELER_BOAT, "Traveler Boat", "Special", "Press E to load land units within 1 tile, E again to unload", UNIT_SRC.PORT, 140, 80, 0, 1, 1, 1.0, 1.0, { tier: 0, domain: DOMAIN.WATER, capacity: 6 });
 
@@ -584,7 +589,7 @@ function init_nations() {
 			"Titan Slayer", "Colossus Maximus", "Onager Lord", "Aquila Wing", "Grand Augur",
 			"Shipwright", "Speculator", "Dromon Lord", "Legate"
 		],
-		cityNames: ["Valoria", "Aurelia", "Castra", "Novum", "Ostia", "Vesta"]
+		cityNames: ["Valoria", "Aurelia", "Castra", "Novum", "Ostia", "Vesta", "Capua", "Lucania", "Brundis", "Tarquin", "Ravenna", "Pompeia", "Cremona", "Aquileia", "Sabina", "Verona", "Cumae", "Fidenae", "Pisaurum", "Spoletum", "Nola", "Tarentum", "Arretium", "Placentia", "Segesta", "Mutina"]
 	};
 	global.nations[1] = {
 		nationName: "Kingdom of Eldmark", colour: make_colour_rgb(60, 110, 220),
@@ -597,7 +602,7 @@ function init_nations() {
 			"Dragonbane", "Iron Colossus", "Trebuchet Master", "Gryphon Wing", "Archmage",
 			"Boatwright", "Lookout", "War Galleon", "Herald"
 		],
-		cityNames: ["Eldmark", "Highfold", "Stonebridge", "Wexham", "Ravenhall", "Dunmere"]
+		cityNames: ["Eldmark", "Highfold", "Stonebridge", "Wexham", "Ravenhall", "Dunmere", "Oakhaven", "Brindle", "Thornwick", "Ashford", "Kingsbury", "Marlowe", "Whitcombe", "Hollowbrook", "Ironwood", "Wyndham", "Greymoor", "Fenwick", "Alderford", "Crowhurst", "Stanmere", "Harrowgate", "Elmsworth", "Blackthorn", "Winterbourne", "Larkspur"]
 	};
 	global.nations[2] = {
 		nationName: "Sultanate of Zahran", colour: make_colour_rgb(235, 150, 40),
@@ -610,7 +615,7 @@ function init_nations() {
 			"Djinn Slayer", "Brass Colossus", "Sand Cannon", "Simoom Wing", "Sage of Sands",
 			"Dhow Builder", "Dhow Scout", "War Dhow", "Vizier's Envoy"
 		],
-		cityNames: ["Zahran", "Qasira", "Medina Noor", "Sahrim", "Amrah", "Dhalla"]
+		cityNames: ["Zahran", "Qasira", "Medina Noor", "Sahrim", "Amrah", "Dhalla", "Najmat", "Rawdan", "Qalat Sul", "Wadi Harith", "Marjan", "Tadmira", "Safwan", "Hadiya", "Bayt Zayn", "Sirhan", "Layyan", "Umm Daraj", "Karimah", "Ghazal", "Nashwan", "Qasr Amal", "Habbak", "Yasmira"]
 	};
 	global.nations[3] = {
 		nationName: "Jade Dynasty", colour: make_colour_rgb(50, 170, 90),
@@ -623,7 +628,7 @@ function init_nations() {
 			"Dragon Slayer", "Stone Guardian", "Fire Dragon Cannon", "Phoenix Wing", "Grand Sage",
 			"Junk Builder", "Junk Scout", "War Junk", "Emissary"
 		],
-		cityNames: ["Jinhai", "Longwei", "Qinglu", "Baishan", "Tianxi", "Yunzhou"]
+		cityNames: ["Jinhai", "Longwei", "Qinglu", "Baishan", "Tianxi", "Yunzhou", "Fengcheng", "Mingshui", "Heyuan", "Chuanbei", "Lianhua", "Xuanwu", "Dongling", "Shanyue", "Zhuque", "Wenhai", "Yingtian", "Luoshui", "Guangyuan", "Bailing", "Nanxi", "Qingyun", "Hongqiao", "Taiyuan"]
 	};
 	global.nations[4] = {
 		nationName: "Norsemen of Skarn", colour: make_colour_rgb(120, 220, 230),
@@ -636,7 +641,7 @@ function init_nations() {
 			"Ragnarok Slayer", "Frost Giant", "Thor's Cannon", "Raven Wing", "Rune Mage",
 			"Longship Builder", "Scout Skiff", "Dragon Ship", "Skald"
 		],
-		cityNames: ["Skarnholm", "Frostvik", "Eldrheim", "Bjornfjord", "Hallgard", "Ulfsvik"]
+		cityNames: ["Skarnholm", "Frostvik", "Eldrheim", "Bjornfjord", "Hallgard", "Ulfsvik", "Ravnsund", "Stormvik", "Kaldhavn", "Svartfjell", "Gunnvik", "Thorsrud", "Vindheim", "Hrafnsey", "Asgrim", "Sigtun", "Njordvik", "Fenrisholm", "Brynhald", "Ulvang", "Skogsund", "Rimfaxe", "Draugvik", "Valdrsby"]
 	};
 	global.nations[5] = {
 		nationName: "Tlaxco Confederacy", colour: make_colour_rgb(160, 80, 200),
@@ -649,7 +654,7 @@ function init_nations() {
 			"Sun Slayer", "Stone Colossus", "Fire Serpent Cannon", "Quetzal Wing", "Grand Nahual",
 			"Canoe Builder", "Canoe Scout", "War Canoe", "Pochteca"
 		],
-		cityNames: ["Tlaxco", "Quetzal", "Coatl", "Tepec", "Ixmal", "Zihua"]
+		cityNames: ["Tlaxco", "Quetzal", "Coatl", "Tepec", "Ixmal", "Zihua", "Tenochca", "Xochitl", "Mictlan", "Cuauhtla", "Tecpan", "Ollin", "Yaotl", "Citlali", "Tezcoco", "Atzlan", "Chalco", "Huitzil", "Itzcoatl", "Metztli", "Tonala", "Coyotl", "Papan", "Tlachco", "Xicotl"]
 	};
 	global.nations[6] = {
 		nationName: "Republic of Sarnia", colour: make_colour_rgb(30, 160, 160),
@@ -662,7 +667,7 @@ function init_nations() {
 			"Hero of Olympus", "Bronze Colossus", "Greek Fire Cannon", "Harpy Wing", "Grand Pythia",
 			"Trireme Builder", "Trireme Scout", "Great Trireme", "Proxenos"
 		],
-		cityNames: ["Sarnia", "Lykos", "Thessara", "Korinthe", "Delphia", "Meros"]
+		cityNames: ["Sarnia", "Lykos", "Thessara", "Korinthe", "Delphia", "Meros", "Argolis", "Phyle", "Hellane", "Kyrenia", "Mykene", "Olympia", "Thaso", "Aegina", "Nikaia", "Chalcis", "Pylos", "Itharis", "Dorion", "Kallias", "Lemnos", "Rhodane", "Arkadia", "Tegea", "Elatea", "Thebara"]
 	};
 	global.nations[7] = {
 		nationName: "Khanate of Ulgar", colour: make_colour_rgb(140, 90, 50),
@@ -675,7 +680,7 @@ function init_nations() {
 			"Doom Slayer", "Mammoth", "Bone Cannon", "Storm Rider", "Storm Shaman",
 			"Raft Builder", "Raft Scout", "War Barge", "Talker"
 		],
-		cityNames: ["Ulgarth", "Grimtooth", "Bonehollow", "Skarg", "Dreth", "Mokar"]
+		cityNames: ["Ulgarth", "Grimtooth", "Bonehollow", "Skarg", "Dreth", "Mokar", "Gorrak", "Blightmaw", "Ashfang", "Krag Dur", "Thokk", "Vilegrub", "Ironjaw", "Scorchpit", "Zugrath", "Brakka", "Rotfang", "Gnashrock", "Dunghul", "Warhold", "Skullreach", "Molgor", "Hagrash", "Durkul"]
 	};
 
 	// Tribes are not a nation slot, they use TRIBE_OWNER

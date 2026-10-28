@@ -105,6 +105,9 @@ function prune_selection(_g) {
 }
 
 function update_input(_g) {
+	if (rename_update(_g)) {
+		return;
+	}
 	// GUI coordinates match the window pixels the HUD is drawn in
 	var _mx = device_mouse_x_to_gui(0);
 	var _my = device_mouse_y_to_gui(0);
@@ -177,6 +180,9 @@ function update_input(_g) {
 	}
 
 	prune_selection(_g);
+	if (keyboard_check_pressed(vk_f2) && (_g.selectedCityId != NO_ID) && (_g.world.cities[_g.selectedCityId].owner == _g.localNation)) {
+		rename_begin(_g, _g.selectedCityId);
+	}
 	if (_g.gameState == GAME_STATE.PLAYING) {
 		sfx_hud_hover(_g);
 	}
@@ -335,6 +341,11 @@ function box_select_units(_g, _x1, _y1, _x2, _y2) {
 
 // Sends a command and shows the reason on screen if it failed
 function run_player_command(_g, _cmd) {
+	// Online, commands go to the host and run on the same tick in every game
+	if (net_is_online()) {
+		net_submit_command(_g, _cmd);
+		return "";
+	}
 	var _result = apply_command(_g.world, _cmd);
 	if (_result != "") {
 		set_toast(_g, _result);

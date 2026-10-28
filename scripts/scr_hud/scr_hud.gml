@@ -307,11 +307,11 @@ function add_bottom_buttons(_g, _list, _state) {
 
 		if (_g.placeType != NO_ID) {
 		array_push(_items, make_button("Cancel", "Stop placing (right click)", UI_ACT.PICK_BUILDING, NO_ID, NO_ID, true, "", ""));
-	} else if (_g.demolishMode) {
-		array_push(_items, make_button("Stop Demolishing", "Right click", UI_ACT.TOGGLE_DEMOLISH, 0, NO_ID, true, "", ""));
-	} else if ((_g.selectedCityId != NO_ID) && (_world.cities[_g.selectedCityId].owner == _local)) {
-		var _city = _world.cities[_g.selectedCityId];
-		for (var _t = 0; _t < UNIT_TYPE.COUNT; _t++) {
+		} else if (_g.demolishMode) {
+			array_push(_items, make_button("Stop Demolishing", "Right click", UI_ACT.TOGGLE_DEMOLISH, 0, NO_ID, true, "", ""));
+		} else if ((_g.selectedCityId != NO_ID) && (_world.cities[_g.selectedCityId].owner == _local)) {
+			var _city = _world.cities[_g.selectedCityId];
+			for (var _t = 0; _t < UNIT_TYPE.COUNT; _t++) {
 			if (global.unitStats[_t].source == UNIT_SRC.CITY_HALL) {
 				array_push(_items, make_unit_button(_world, _local, _state, _t, _city.level, UI_ACT.BUY_UNIT, NO_ID));
 			}
@@ -324,7 +324,8 @@ function add_bottom_buttons(_g, _list, _state) {
 			_upWhy = (_state.gold >= _cost) ? "" : "Not enough gold";
 		}
 		array_push(_items, make_button("Upgrade City", _upSub, UI_ACT.UPGRADE_CITY, 0, NO_ID, (_upWhy == ""), _upWhy, "Bigger border, more income, and unlocks level 2 units at level 3"));
-	} else if ((_g.selectedBuildingId != NO_ID) && _world.buildings[_g.selectedBuildingId].alive && (_world.buildings[_g.selectedBuildingId].owner == _local)) {
+		array_push(_items, make_button("Rename City", "F2", UI_ACT.RENAME_CITY, 0, NO_ID, true, "", "Give this city a new name"));
+		} else if ((_g.selectedBuildingId != NO_ID) && _world.buildings[_g.selectedBuildingId].alive && (_world.buildings[_g.selectedBuildingId].owner == _local)) {
 		var _b = _world.buildings[_g.selectedBuildingId];
 		var _source = get_building_unit_source(_b.type);
 
@@ -595,6 +596,10 @@ function execute_hud_button(_g, _button) {
 			break;
 
 		default:
+			return;
+			
+		case UI_ACT.RENAME_CITY:
+			rename_begin(_g, _g.selectedCityId);
 			return;
 	}
 	run_player_command(_g, _cmd);

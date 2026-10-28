@@ -72,7 +72,12 @@ paintGy = -1;
 // There is no world until the menu builds one (the menu shows a simulated game)
 world = undefined;
 localNation = NO_ID;
+renameCityId = NO_ID;
+renameText = "";
+
+// Initialise game
 camera_init(id);
 menu_init(id);
 menu_start_demo(id);
+net_init();
 audio_init(id);

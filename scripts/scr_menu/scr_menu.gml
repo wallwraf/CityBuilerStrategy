@@ -7,7 +7,7 @@
 
 #macro GAME_TITLE "CITY RTS"
 #macro GAME_TAGLINE "Build. Ally. Conquer."
-#macro GAME_VERSION "26.0.0.1b"
+#macro GAME_VERSION "26.0.0.7b"
 
 #macro MENU_ITEM_H 48
 #macro MENU_ITEM_GAP 10
@@ -31,16 +31,11 @@ enum MENU_PAGE {
 	ACCESSIBILITY,
 	GAMEPLAY,
 	HOWTO,
-	CREDITS
-}
-
-enum MENU_KIND {
-	BUTTON,
-	CHOICE,
-	TOGGLE,
-	SLIDER,
-	SEED,
-	TEXT
+	CREDITS,
+	MULTI,
+	HOST,
+	JOIN,
+	LOBBY
 }
 
 enum MENU_ACT {
@@ -52,7 +47,23 @@ enum MENU_ACT {
 	RESET,
 	OPTION,
 	MAP_TYPE,
-	SEED
+	SEED,
+	HOST_NEXT,
+	JOIN_CODE,
+	JOIN_GO,
+	LOBBY_SLOT,
+	LOBBY_COPY,
+	LOBBY_START,
+	LOBBY_CANCEL
+}
+
+enum MENU_KIND {
+	BUTTON,
+	CHOICE,
+	TOGGLE,
+	SLIDER,
+	SEED,
+	TEXT
 }
 
 // ------------------------------------------------------------
@@ -73,6 +84,8 @@ function menu_init(_g) {
 	_g.menuWait = 0;
 	_g.demoWarm = 0;
 	_g.menuExitTimer = 0;
+	_g.menuCode = "";
+	_g.menuEditCode = false;
 	menu_reset_page(_g);
 }
 
@@ -168,10 +181,7 @@ function menu_get_items(_g) {
 	switch (_g.menuPage) {
 		case MENU_PAGE.MAIN:
 			array_push(_items, menu_button("Play", MENU_ACT.OPEN_PAGE, MENU_PAGE.PLAY));
-			var _multi = menu_button("Multiplayer", MENU_ACT.NONE, 0);
-			_multi.enabled = false;
-			_multi.value = "Soon";
-			array_push(_items, _multi);
+			array_push(_items, menu_button("Multiplayer", MENU_ACT.OPEN_PAGE, MENU_PAGE.MULTI));
 			array_push(_items, menu_button("How to Play", MENU_ACT.OPEN_PAGE, MENU_PAGE.HOWTO));
 			array_push(_items, menu_button("Settings", MENU_ACT.OPEN_PAGE, MENU_PAGE.SETTINGS));
 			array_push(_items, menu_button("Credits", MENU_ACT.OPEN_PAGE, MENU_PAGE.CREDITS));
@@ -179,28 +189,7 @@ function menu_get_items(_g) {
 			break;
 
 		case MENU_PAGE.PLAY:
-			var _seed = make_menu_item(MENU_KIND.SEED, "Seed");
-			_seed.act = MENU_ACT.SEED;
-			if (_g.menuEditing) {
-				_seed.value = _g.menuSeedText + (((current_time div 400) mod 2 == 0) ? "|" : " ");
-			} else {
-				_seed.value = (_g.menuSeed == 0) ? "Random" : string(_g.menuSeed);
-			}
-			array_push(_items, _seed);
-			var _map = make_menu_item(MENU_KIND.CHOICE, "Map Type");
-			_map.act = MENU_ACT.MAP_TYPE;
-			_map.value = global.mapPresets[_g.settings.mapPreset].presetName;
-			array_push(_items, _map);
-
-			// Map size: 32 x 32 up to 128 x 128, in steps of 8
-			var _size = menu_option_slider("Map Size", "mapSize", 32, 128, 8, OPT_APPLY.NONE);
-			_size.value = string(_size.number) + " x " + string(_size.number);
-			array_push(_items, _size);
-
-			// Enemy factions. You always take one nation slot, so the bots can fill the other 7.
-			array_push(_items, menu_option_toggle("Bandits", "bandits", OPT_APPLY.NONE));
-			array_push(_items, menu_option_slider("Bot Factions", "botFactions", 1, MAX_NATIONS - 1, 1, OPT_APPLY.NONE));
-
+			menu_add_setup_items(_g, _items, true);
 			array_push(_items, menu_button("Start Game", MENU_ACT.START, 0));
 			array_push(_items, menu_button("Back", MENU_ACT.BACK, 0));
 			break;
@@ -265,8 +254,101 @@ function menu_get_items(_g) {
 			array_push(_items, menu_text("Inspired by Sid Meier's Civilization series"));
 			array_push(_items, menu_button("Back", MENU_ACT.BACK, 0));
 			break;
+			
+		case MENU_PAGE.MULTI:
+			array_push(_items, menu_button("Host", MENU_ACT.OPEN_PAGE, MENU_PAGE.HOST));
+			array_push(_items, menu_button("Join", MENU_ACT.OPEN_PAGE, MENU_PAGE.JOIN));
+			array_push(_items, menu_button("Back", MENU_ACT.BACK, 0));
+			break;
+
+		case MENU_PAGE.HOST:
+			menu_add_setup_items(_g, _items, false);
+			array_push(_items, menu_button("Next", MENU_ACT.HOST_NEXT, 0));
+			array_push(_items, menu_button("Back", MENU_ACT.BACK, 0));
+			break;
+
+		case MENU_PAGE.JOIN:
+			var _codeItem = make_menu_item(MENU_KIND.SEED, "Code");
+			_codeItem.act = MENU_ACT.JOIN_CODE;
+			if (_g.menuEditing) {
+				_codeItem.value = net_code_format(_g.menuSeedText) + (((current_time div 400) mod 2 == 0) ? "|" : " ");
+			} else {
+				_codeItem.value = (_g.menuCode == "") ? "Enter code" : net_code_format(_g.menuCode);
+			}
+			array_push(_items, _codeItem);
+			var _join = menu_button("Join", MENU_ACT.JOIN_GO, 0);
+			_join.enabled = net_code_valid(_g.menuCode) && !global.net.connecting;
+			if (global.net.connecting) {
+				_join.value = "Connecting...";
+			}
+			array_push(_items, _join);
+			array_push(_items, menu_button("Back", MENU_ACT.BACK, 0));
+			break;
+
+		case MENU_PAGE.LOBBY:
+			var _net = global.net;
+			var _isHost = (_net.mode == NET_MODE.HOST);
+			var _codeText = (_net.code == "") ? "Finding address..." : net_code_format(_net.code);
+			array_push(_items, menu_text("Code: " + _codeText));
+			var _copy = menu_button("Copy to Clipboard", MENU_ACT.LOBBY_COPY, 0);
+			_copy.enabled = (_net.code != "");
+			array_push(_items, _copy);
+			for (var _s = 0; _s < MAX_NATIONS; _s++) {
+				var _slot = make_menu_item(MENU_KIND.CHOICE, "Slot " + string(_s + 1));
+				_slot.act = MENU_ACT.LOBBY_SLOT;
+				_slot.arg = _s;
+				_slot.h = 36;
+				var _kind = net_slot_kind(_s);
+				switch (_kind) {
+					case LOBBY_SLOT.HOST: _slot.value = "Host"; break;
+					case LOBBY_SLOT.PLAYER: _slot.value = "Player"; break;
+					case LOBBY_SLOT.AI: _slot.value = "AI"; break;
+					case LOBBY_SLOT.EMPTY: _slot.value = "Empty"; break;
+				}
+				if (_s == _net.mySlot) {
+					_slot.value += " (You)";
+				}
+				_slot.enabled = _isHost && ((_kind == LOBBY_SLOT.AI) || (_kind == LOBBY_SLOT.EMPTY));
+				array_push(_items, _slot);
+			}
+			var _start = menu_button("Start", MENU_ACT.LOBBY_START, 0);
+			_start.enabled = _isHost && (_net.lobbyPlayers + _net.lobbyAi >= 2);
+			if (!_isHost) {
+				_start.value = "Host only";
+			} else if (!_start.enabled) {
+				_start.value = "Need 2 or more";
+			}
+			array_push(_items, _start);
+			array_push(_items, menu_button(_isHost ? "Cancel" : "Leave", MENU_ACT.LOBBY_CANCEL, 0));
+			break;
 	}
 	return _items;
+}
+
+// The settings shared by the Play and Host pages. Hosts have no Bot Factions slider because
+// the lobby decides how many AI there are.
+function menu_add_setup_items(_g, _items, _includeBots) {
+	var _seed = make_menu_item(MENU_KIND.SEED, "Seed");
+	_seed.act = MENU_ACT.SEED;
+	if (_g.menuEditing) {
+		_seed.value = _g.menuSeedText + (((current_time div 400) mod 2 == 0) ? "|" : " ");
+	} else {
+		_seed.value = (_g.menuSeed == 0) ? "Random" : string(_g.menuSeed);
+	}
+	array_push(_items, _seed);
+	var _map = make_menu_item(MENU_KIND.CHOICE, "Map Type");
+	_map.act = MENU_ACT.MAP_TYPE;
+	_map.value = global.mapPresets[_g.settings.mapPreset].presetName;
+	array_push(_items, _map);
+
+	var _size = menu_option_slider("Map Size", "mapSize", 32, 128, 8, OPT_APPLY.NONE);
+	_size.value = string(_size.number) + " x " + string(_size.number);
+	array_push(_items, _size);
+
+	array_push(_items, menu_option_toggle("Bandits", "bandits", OPT_APPLY.NONE));
+	if (_includeBots) {
+		array_push(_items, menu_option_slider("Bot Factions", "botFactions", 1, MAX_NATIONS - 1, 1, OPT_APPLY.NONE));
+	}
 }
 
 function menu_page_title(_page) {
@@ -280,6 +362,10 @@ function menu_page_title(_page) {
 		case MENU_PAGE.GAMEPLAY: return "SETTINGS  /  GAMEPLAY";
 		case MENU_PAGE.HOWTO: return "HOW TO PLAY";
 		case MENU_PAGE.CREDITS: return "CREDITS";
+		case MENU_PAGE.MULTI: return "MULTIPLAYER";
+		case MENU_PAGE.HOST: return "MULTIPLAYER  /  HOST";
+		case MENU_PAGE.JOIN: return "MULTIPLAYER  /  JOIN";
+		case MENU_PAGE.LOBBY: return "LOBBY";
 	}
 	return "";
 }
@@ -341,14 +427,33 @@ function menu_open_page(_g, _page) {
 }
 
 function menu_go_back(_g) {
+	if (_g.menuPage == MENU_PAGE.LOBBY) {
+		sfx_play("ui_back");
+		menu_leave_lobby(_g);
+		return;
+	}
 	if (array_length(_g.menuStack) == 0) {
 		return;
+	}
+	if (_g.menuPage == MENU_PAGE.JOIN) {
+		net_close();
 	}
 	sfx_play("ui_back");
 	save_options();
 	var _previous = array_pop(_g.menuStack);
 	_g.menuPage = _previous.page;
 	_g.menuFocus = _previous.focus;
+	_g.menuAnim = array_create(MENU_MAX_ITEMS, 0);
+}
+
+// Closes the lobby (the host's players are sent home) and goes back to the Multiplayer page
+function menu_leave_lobby(_g) {
+	net_close();
+	while ((array_length(_g.menuStack) > 0) && (_g.menuPage != MENU_PAGE.MULTI)) {
+		var _previous = array_pop(_g.menuStack);
+		_g.menuPage = _previous.page;
+		_g.menuFocus = _previous.focus;
+	}
 	_g.menuAnim = array_create(MENU_MAX_ITEMS, 0);
 }
 
@@ -372,6 +477,10 @@ function menu_slider_bar(_item) {
 
 // _dir is 1 for next, -1 for previous
 function menu_adjust(_g, _item, _dir) {
+	if (_item.act == MENU_ACT.LOBBY_SLOT) {
+		net_lobby_toggle(_item.arg);
+		return;
+	}
 	sfx_play("ui_tick");
 	if (_item.act == MENU_ACT.MAP_TYPE) {
 		var _presets = array_length(global.mapPresets);
@@ -429,6 +538,7 @@ function menu_activate(_g, _item) {
 			set_toast(_g, "Settings reset to defaults");
 			break;
 		case MENU_ACT.SEED:
+			_g.menuEditCode = false;
 			_g.menuEditing = true;
 			_g.menuSeedText = (_g.menuSeed == 0) ? "" : string(_g.menuSeed);
 			keyboard_string = _g.menuSeedText;
@@ -439,19 +549,65 @@ function menu_activate(_g, _item) {
 				menu_adjust(_g, _item, 1);
 			}
 			break;
+		case MENU_ACT.HOST_NEXT:
+			save_options();
+			if (net_host_open(_g)) {
+				menu_open_page(_g, MENU_PAGE.LOBBY);
+			} else {
+				set_toast(_g, "Could not open the lobby (is port " + string(NET_PORT) + " already in use?)");
+			}
+			break;
+		case MENU_ACT.JOIN_CODE:
+			_g.menuEditing = true;
+			_g.menuEditCode = true;
+			_g.menuSeedText = _g.menuCode;
+			keyboard_string = _g.menuCode;
+			break;
+		case MENU_ACT.JOIN_GO:
+			net_join(_g, _g.menuCode);
+			break;
+		case MENU_ACT.LOBBY_SLOT:
+			net_lobby_toggle(_item.arg);
+			break;
+		case MENU_ACT.LOBBY_COPY:
+			clipboard_set_text(net_code_format(global.net.code));
+			set_toast(_g, "Code copied");
+			break;
+		case MENU_ACT.LOBBY_START:
+			net_host_launch(_g);
+			break;
+		case MENU_ACT.LOBBY_CANCEL:
+			menu_leave_lobby(_g);
+			break;
 	}
 }
 
-// Typing a seed: digits only, Enter or a click confirms, Escape or right click cancels. 0 means random.
+// Typing a seed (digits only, 0 means random) or a join code (letters and digits, Ctrl+V pastes).
+// Enter or a click confirms, Escape or right click cancels.
 function menu_update_seed_edit(_g) {
-	var _text = string_digits(keyboard_string);
-	if (string_length(_text) > 6) {
-		_text = string_copy(_text, 1, 6);
+	var _text;
+	if (_g.menuEditCode) {
+		if (keyboard_check(vk_control) && keyboard_check_pressed(ord("V")) && clipboard_has_text()) {
+			keyboard_string = clipboard_get_text();
+		}
+		_text = net_code_clean(keyboard_string);
+		if (string_length(_text) > 11) {
+			_text = string_copy(_text, 1, 11);
+		}
+	} else {
+		_text = string_digits(keyboard_string);
+		if (string_length(_text) > 6) {
+			_text = string_copy(_text, 1, 6);
+		}
 	}
 	keyboard_string = _text;
 	_g.menuSeedText = _text;
 	if (keyboard_check_pressed(vk_enter) || mouse_check_button_pressed(mb_left)) {
-		_g.menuSeed = (_text == "") ? 0 : real(_text);
+		if (_g.menuEditCode) {
+			_g.menuCode = _text;
+		} else {
+			_g.menuSeed = (_text == "") ? 0 : real(_text);
+		}
 		_g.menuEditing = false;
 	} else if (keyboard_check_pressed(vk_escape) || mouse_check_button_pressed(mb_right)) {
 		_g.menuEditing = false;
@@ -559,6 +715,7 @@ function menu_update_anim(_g, _count, _dt) {
 function menu_start_game(_g) {
 	save_options();
 	_g.settings.seed = (_g.menuSeed == 0) ? irandom_range(1, 999999) : _g.menuSeed;
+
 	// Setup from the Play screen
 	var _o = global.options;
 	_g.settings.mapWidth = _o.mapSize;
@@ -567,18 +724,42 @@ function menu_start_game(_g) {
 	_g.settings.nationCount = _g.settings.botCount + 1;
 	_g.settings.vacantCount = 0;
 	_g.settings.bandits = (_o.bandits == 1);
+	menu_begin_world(_g, NO_ID);
+}
+
+// The settings for a multiplayer game from the Host page (the lobby fills in the nation counts)
+function menu_make_settings(_g) {
+	var _settings = {};
+	var _names = variable_struct_get_names(_g.settings);
+	for (var _i = 0; _i < array_length(_names); _i++) {
+		variable_struct_set(_settings, _names[_i], variable_struct_get(_g.settings, _names[_i]));
+	}
+	var _o = global.options;
+	_settings.seed = (_g.menuSeed == 0) ? irandom_range(1, 999999) : _g.menuSeed;
+	_settings.mapWidth = _o.mapSize;
+	_settings.mapHeight = _o.mapSize;
+	_settings.bandits = (_o.bandits == 1);
+	return _settings;
+}
+
+// Builds the world from _g.settings and starts playing. _slot is the nation this player controls
+// (NO_ID keeps the generator's default).
+function menu_begin_world(_g, _slot) {
 	if (_g.world != undefined) {
 		destroy_world(_g.world);
 	}
 	_g.world = create_world(_g.settings);
+	if (_slot != NO_ID) {
+		_g.world.localNation = _slot;
+	}
 	_g.localNation = _g.world.localNation;
 	_g.gameState = GAME_STATE.PLAYING;
 	_g.zoom = 2;
 	clear_selection(_g);
 	_g.panel = PANEL.NONE;
 	_g.placeType = NO_ID;
-	_g.demolishMode = false;
 	_g.dragging = false;
+	_g.renameCityId = NO_ID;
 	_g.menuExitTimer = 0;
 	if (_g.localNation != NO_ID) {
 		var _capital = bot_get_first_city(_g.world, _g.localNation);
@@ -590,6 +771,7 @@ function menu_start_game(_g) {
 
 // From a running game back to the main menu
 function menu_return(_g) {
+	net_close();
 	if (_g.world != undefined) {
 		destroy_world(_g.world);
 		_g.world = undefined;

@@ -160,7 +160,7 @@ function run_bot_builder(_world, _owner) {
 	}
 
 	// Pick a different city each time so the economy spreads out
-	var _anchor = _cities[irandom(_cityCount - 1)];
+	var _anchor = _cities[sim_irandom(_world, _cityCount - 1)];
 
 	for (var _i = 0; _i < array_length(_econTypes); _i++) {
 		var _type = _econTypes[_i];
@@ -458,7 +458,7 @@ function bot_buy_soldier(_world, _owner, _capital, _militaryCount) {
 
 // With an embassy and no treaty, a bot sometimes sends an envoy to the weakest neighbour nation
 function bot_try_diplomacy(_world, _owner) {
-	if ((get_active_treaty(_world, _owner) != undefined) || (irandom(2) != 0)) {
+	if ((get_active_treaty(_world, _owner) != undefined) || (sim_irandom(_world, 2) != 0)) {
 		return;
 	}
 	var _embassy = undefined;
@@ -483,7 +483,7 @@ function bot_try_diplomacy(_world, _owner) {
 	}
 	var _send = make_command(CMD.SEND_ENVOY, _owner);
 	_send.buildingId = _embassy.buildingId;
-	_send.targetNation = _options[irandom(array_length(_options) - 1)];
+	_send.targetNation = _options[sim_irandom(_world, array_length(_options) - 1)];
 	apply_command(_world, _send);
 }
 

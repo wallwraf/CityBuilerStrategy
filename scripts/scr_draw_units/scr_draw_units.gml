@@ -357,5 +357,12 @@ function draw_boat_unit(_type, _col, _tc) {
 			draw_set_colour(_tc);
 			draw_rectangle(-10, -15, 10, -14, false);
 			break;
+			
+		case UNIT_TYPE.ENVOY_BOAT:
+			draw_set_colour(c_white);
+			draw_line_width(-2, -9, -2, -27, 1);
+			draw_triangle(-2, -27, -2, -19, 8, -23, false);
+			draw_rectangle(3, -13, 8, -9, false);
+			break;
 	}
 }

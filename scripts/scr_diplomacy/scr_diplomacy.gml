@@ -95,7 +95,7 @@ function update_nation_stats(_world) {
 	}
 	for (var _i = 0; _i < array_length(_world.units); _i++) {
 		var _u = _world.units[_i];
-		if (!_u.alive || (_u.owner < 0) || (_u.type == UNIT_TYPE.EXPLORER) || (_u.type == UNIT_TYPE.ENVOY)) {
+		if (!_u.alive || (_u.owner < 0) || (_u.type == UNIT_TYPE.EXPLORER) || (global.unitStats[_u.type].diplomat)) {
 			continue;
 		}
 		var _st = _world.nationStates[_u.owner].stats;

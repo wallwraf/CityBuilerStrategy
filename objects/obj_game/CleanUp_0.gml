@@ -6,3 +6,4 @@ if (world != undefined) {
 }
 camera_destroy(cam);
 audio_cleanup();
+net_cleanup();
