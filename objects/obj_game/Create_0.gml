@@ -53,6 +53,7 @@ selectedBuildingId = NO_ID;
 
 // Which side panel is open (PANEL.NONE, BUILD, RESEARCH, DIPLOMACY or IDEOLOGY)
 panel = PANEL.NONE;
+panelScroll = 0;
 
 // Building placement mode: placeType is the building being placed, NO_ID when not placing
 // For walls and gates placeGx / placeGy is the edge position and placeAxis is 0 or 1
@@ -62,9 +63,16 @@ placeGy = 0;
 placeAxis = 0;
 placeMsg = "";
 
+// Demolish tool and path painting
+demolishMode = false;
+painted = false;
+paintGx = -1;
+paintGy = -1;
+
 // There is no world until the menu builds one (the menu shows a simulated game)
 world = undefined;
 localNation = NO_ID;
 camera_init(id);
 menu_init(id);
 menu_start_demo(id);
+audio_init(id);

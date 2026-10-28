@@ -63,7 +63,8 @@ enum BIOME {
 enum RES {
 	NONE,
 	STONE,
-	ORE
+	ORE,
+	TREES
 }
 
 enum DOMAIN {
@@ -109,6 +110,7 @@ enum UNIT_TYPE {
 	MINESEEKER,
 	BATTLESHIP,
 	ENVOY,
+	TRAVELER_BOAT,
 	COUNT
 }
 
@@ -147,6 +149,7 @@ enum BUILDING {
 	PORT,
 	WALL,
 	GATE,
+	PATH,
 	TOWER,
 	NAVAL_MINE,
 	GARRISON,
@@ -170,7 +173,8 @@ enum PLACE {
 	ORE,
 	WATER,
 	NEAR_CITY,
-	EDGE
+	EDGE,
+	PATH
 }
 
 enum IDEO {
@@ -187,7 +191,34 @@ enum RESEARCH {
 	COMBAT_ENGINEERING,
 	NAVAL_MINES,
 	MINE_RECON,
+	// Offense
+	SHARPENED_STEEL,
+	BATTLE_TACTICS,
+	// Defense
+	TEMPERED_ARMOR,
+	REINFORCED_PLATING,
+	// Economy
+	TRADE_ROUTES,
+	SCHOLARS,
+	MERCHANT_GUILDS,
+	GRAND_LIBRARY,
 	COUNT
+}
+
+// The three research branches (the City Hall is the root of the tree)
+enum BRANCH {
+	OFFENSE,
+	DEFENSE,
+	ECONOMY
+}
+
+// What a research node does besides unlocking things
+enum RFX {
+	NONE,
+	DAMAGE,
+	ARMOR,
+	GOLD,
+	RP
 }
 
 enum SLOT_TYPE {
@@ -210,7 +241,10 @@ enum CMD {
 	SEND_ENVOY,
 	PLACE_MINE,
 	DECLARE_WAR,
-	ANSWER_OFFER
+	ANSWER_OFFER,
+	TOGGLE_CARGO,
+	CONNECT_PATH,
+	DEMOLISH
 }
 
 // Which side panel is open
@@ -236,6 +270,9 @@ enum UI_ACT {
 	PLACE_MINE,
 	DECLARE_WAR,
 	ANSWER_OFFER,
+	TOGGLE_CARGO,
+	TOGGLE_DEMOLISH,
+	DEMOLISH,
 	NONE
 }
 
@@ -293,7 +330,9 @@ function define_unit(_type, _subtitle, _role, _desc, _source, _cost, _hp, _damag
 		seekRadius: 0,
 		reqCityLevel: 1,
 		reqBuildingLevel: 1,
-		reqResearch: NO_ID
+		reqResearch: NO_ID,
+		weight: 1,
+		capacity: 0
 	};
 	var _names = variable_struct_get_names(_extra);
 	for (var _i = 0; _i < array_length(_names); _i++) {
@@ -352,6 +391,24 @@ function init_unit_stats() {
 
 	// Embassy
 	define_unit(UNIT_TYPE.ENVOY, "Envoy", "Special", "Carries a peace treaty to a capital. Troops ignore it", UNIT_SRC.EMBASSY, 40, 15, 0, 1, 1, 1.0, 1.0, { tier: 0, passSolid: true, targetable: false, ability: ABILITY.ENVOY });
+
+	// Port: carries land units across the water (press E next to units to load them, E again to unload)
+	define_unit(UNIT_TYPE.TRAVELER_BOAT, "Traveler Boat", "Special", "Press E to load land units within 1 tile, E again to unload", UNIT_SRC.PORT, 140, 80, 0, 1, 1, 1.0, 1.0, { tier: 0, domain: DOMAIN.WATER, capacity: 6 });
+
+	// Weight: every unit weighs 1 or more. A boat holds up to its capacity, and a tile only
+	// holds units up to its weight limit (see get_tile_weight_limit). Flyers and envoys cannot be carried.
+	global.unitStats[UNIT_TYPE.IRONCLAD].weight = 2;
+	global.unitStats[UNIT_TYPE.EXECUTIONER].weight = 2;
+	global.unitStats[UNIT_TYPE.TOWER_SHIELD].weight = 2;
+	global.unitStats[UNIT_TYPE.ARTILLERIST].weight = 2;
+	global.unitStats[UNIT_TYPE.LIGHT_CAVALRY].weight = 2;
+	global.unitStats[UNIT_TYPE.WARHOUND].weight = 2;
+	global.unitStats[UNIT_TYPE.SIEGE_MARKSMAN].weight = 2;
+	global.unitStats[UNIT_TYPE.ROYAL_CHAMPION].weight = 2;
+	global.unitStats[UNIT_TYPE.BASTION_KNIGHT].weight = 3;
+	global.unitStats[UNIT_TYPE.SIEGEBREAKER].weight = 3;
+	global.unitStats[UNIT_TYPE.DREADNOUGHT_SLAYER].weight = 2;
+	global.unitStats[UNIT_TYPE.COLOSSUS].weight = 4;
 }
 
 // Returns the units a building type can sell, in enum order
@@ -401,12 +458,13 @@ function init_building_defs() {
 	define_building(BUILDING.PORT, "Port", "Builds ships. Must touch water", 150, 3, 180, PLACE.COAST, {});
 	define_building(BUILDING.WALL, "Wall", "Blocks the edge of a tile. Sky units can leap it", 25, 3, 120, PLACE.EDGE, { solid: true });
 	define_building(BUILDING.GATE, "Gate", "A wall your own units walk straight through", 45, 3, 120, PLACE.EDGE, { solid: true });
+	define_building(BUILDING.PATH, "Path", "Units on your paths move 1 tile further. Sits under buildings, drag to paint. Nearby networks can be linked for gold", 10, 1, 1, PLACE.PATH, {});
 	define_building(BUILDING.TOWER, "Tower", "Shoots enemies within 1 tile. Level 9 is twice as fast", 130, 9, 140, PLACE.LAND, {});
 	define_building(BUILDING.NAVAL_MINE, "Naval Mine", "Water only. Hidden until enemies get within 1 tile", 60, 1, 20, PLACE.WATER, { hidden: true, triggerDamage: 70, reqResearch: RESEARCH.NAVAL_MINES });
 	define_building(BUILDING.GARRISON, "Garrison", "Trains level 5 units", 260, 3, 220, PLACE.LAND, {});
 	define_building(BUILDING.HOSPITAL, "Hospital", "Heals your units within 1 tile. Trains Medics", 140, 5, 150, PLACE.LAND, {});
 	define_building(BUILDING.LABORATORY, "Laboratory", "+0.5 research points per second per level", 160, 5, 140, PLACE.LAND, {});
-	define_building(BUILDING.LUMBER_MILL, "Lumber Mill", "Makes gold. Forest tiles only", 70, 5, 100, PLACE.FOREST, { incomeBase: 0.6, incomePerLevel: 0.3 });
+	define_building(BUILDING.LUMBER_MILL, "Lumber Mill", "Makes gold. Tree tiles only", 70, 5, 100, PLACE.FOREST, { incomeBase: 0.6, incomePerLevel: 0.3 });
 	define_building(BUILDING.QUARRY, "Quarry", "Makes gold. Stone tiles only", 100, 5, 110, PLACE.STONE, { incomeBase: 0.9, incomePerLevel: 0.4 });
 	define_building(BUILDING.MINE, "Mine", "Makes gold. Ore tiles only", 150, 5, 120, PLACE.ORE, { incomeBase: 1.4, incomePerLevel: 0.6 });
 	define_building(BUILDING.MARKET, "Market", "Makes gold. Within 1 tile of a city centre", 110, 5, 110, PLACE.NEAR_CITY, { incomeBase: 0.8, incomePerLevel: 0.4 });
@@ -419,11 +477,68 @@ function init_building_defs() {
 // ------------------------------------------------------------
 
 function init_research_defs() {
+	// The City Hall is the root of the tree and is always researched.
+	// branch / row / col place a node in the tree (row 1 hangs off the City Hall, row 2 off a row 1 node).
+	// fx / amount are a passive bonus: DAMAGE and ARMOR and GOLD are fractions, RP is research points per second.
 	global.researchDefs = [];
-	global.researchDefs[RESEARCH.FIELD_MEDIC] = { researchName: "Field Medic", cost: 30, prereq: NO_ID, desc: "Hospitals can train Medics" };
-	global.researchDefs[RESEARCH.COMBAT_ENGINEERING] = { researchName: "Combat Engineering", cost: 45, prereq: NO_ID, desc: "Barracks can train Combat Engineers" };
-	global.researchDefs[RESEARCH.NAVAL_MINES] = { researchName: "Naval Mines", cost: 60, prereq: RESEARCH.COMBAT_ENGINEERING, desc: "Unlocks naval mines and Building Boats" };
-	global.researchDefs[RESEARCH.MINE_RECON] = { researchName: "Mine Recon", cost: 50, prereq: NO_ID, desc: "Ports can build Mineseekers" };
+	define_research(RESEARCH.COMBAT_ENGINEERING, "Combat Engineering", 45, NO_ID, BRANCH.OFFENSE, 1, 0, RFX.NONE, 0, "Barracks can train Combat Engineers");
+	define_research(RESEARCH.SHARPENED_STEEL, "Sharpened Steel", 60, NO_ID, BRANCH.OFFENSE, 1, 1, RFX.DAMAGE, 0.10, "+10% damage for all your units");
+	define_research(RESEARCH.NAVAL_MINES, "Naval Mines", 60, RESEARCH.COMBAT_ENGINEERING, BRANCH.OFFENSE, 2, 0, RFX.NONE, 0, "Unlocks naval mines and Building Boats");
+	define_research(RESEARCH.BATTLE_TACTICS, "Battle Tactics", 110, RESEARCH.SHARPENED_STEEL, BRANCH.OFFENSE, 2, 1, RFX.DAMAGE, 0.15, "+15% damage for all your units");
+
+	define_research(RESEARCH.FIELD_MEDIC, "Field Medic", 30, NO_ID, BRANCH.DEFENSE, 1, 0, RFX.NONE, 0, "Hospitals can train Medics");
+	define_research(RESEARCH.TEMPERED_ARMOR, "Tempered Armor", 60, NO_ID, BRANCH.DEFENSE, 1, 1, RFX.ARMOR, 0.10, "Your units take 10% less damage");
+	define_research(RESEARCH.MINE_RECON, "Mine Recon", 50, RESEARCH.FIELD_MEDIC, BRANCH.DEFENSE, 2, 0, RFX.NONE, 0, "Ports can build Mineseekers");
+	define_research(RESEARCH.REINFORCED_PLATING, "Reinforced Plating", 110, RESEARCH.TEMPERED_ARMOR, BRANCH.DEFENSE, 2, 1, RFX.ARMOR, 0.10, "Your units take a further 10% less damage");
+
+	define_research(RESEARCH.TRADE_ROUTES, "Trade Routes", 40, NO_ID, BRANCH.ECONOMY, 1, 0, RFX.GOLD, 0.10, "+10% gold income");
+	define_research(RESEARCH.SCHOLARS, "Scholars", 40, NO_ID, BRANCH.ECONOMY, 1, 1, RFX.RP, 0.5, "+0.5 research points per second");
+	define_research(RESEARCH.MERCHANT_GUILDS, "Merchant Guilds", 90, RESEARCH.TRADE_ROUTES, BRANCH.ECONOMY, 2, 0, RFX.GOLD, 0.15, "+15% gold income");
+	define_research(RESEARCH.GRAND_LIBRARY, "Grand Library", 90, RESEARCH.SCHOLARS, BRANCH.ECONOMY, 2, 1, RFX.RP, 1.0, "+1 research point per second");
+}
+
+function define_research(_id, _name, _cost, _prereq, _branch, _row, _col, _fx, _amount, _desc) {
+	global.researchDefs[_id] = {
+		researchName: _name,
+		cost: _cost,
+		prereq: _prereq,
+		branch: _branch,
+		row: _row,
+		col: _col,
+		fx: _fx,
+		amount: _amount,
+		desc: _desc
+	};
+}
+
+function get_branch_colour(_branch) {
+	switch (_branch) {
+		case BRANCH.OFFENSE: return make_colour_rgb(200, 60, 60);
+		case BRANCH.DEFENSE: return make_colour_rgb(70, 120, 220);
+	}
+	return make_colour_rgb(70, 180, 90);
+}
+
+function get_branch_name(_branch) {
+	switch (_branch) {
+		case BRANCH.OFFENSE: return "Offense";
+		case BRANCH.DEFENSE: return "Defense";
+	}
+	return "Economy";
+}
+
+// Maximum unit weight a tile can hold. Units that weigh more cannot walk onto it.
+function get_tile_weight_limit(_world, _gx, _gy) {
+	if (!tile_in_bounds(_world, _gx, _gy)) {
+		return 0;
+	}
+	switch (ds_grid_get(_world.biome, _gx, _gy)) {
+		case BIOME.MOUNTAIN: return 0;
+		case BIOME.WATER: return 99;
+		case BIOME.DESERT: return 3;
+		case BIOME.SNOW: return 3;
+	}
+	return 4;
 }
 
 // ------------------------------------------------------------

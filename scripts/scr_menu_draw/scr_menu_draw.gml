@@ -135,12 +135,12 @@ function draw_menu_footer(_g) {
 	draw_set_halign(fa_left);
 	draw_set_valign(fa_bottom);
 	draw_set_colour(c_gray);
-	var _hint = "Click / Enter: select     Right click / Esc: back     Arrows: change";
+	var _hint = "";
 	if (_g.menuEditing) {
 		_hint = "Type a number (0 = random)     Enter: confirm     Esc: cancel";
 	}
 	draw_text(28, _g.screenH - 36, _hint);
-	draw_text(28, _g.screenH - 14, GAME_VERSION);
+	draw_text(28, _g.screenH - 14, "Build " + GAME_VERSION);
 }
 
 function draw_menu_toast(_g) {

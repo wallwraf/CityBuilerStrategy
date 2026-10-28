@@ -31,7 +31,11 @@ function get_default_options() {
 		reducedMotion: 0,
 		thickBorders: 0,
 		// Gameplay
-		tooltips: 1
+		tooltips: 1,
+		// Game setup (Play screen)
+		mapSize: 64,
+		bandits: 1,
+		botFactions: 3
 	};
 }
 

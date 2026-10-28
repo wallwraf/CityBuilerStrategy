@@ -15,16 +15,35 @@ function draw_world(_g) {
 	var _y1 = _g.camY;
 	var _x2 = _g.camX + _g.screenW / _g.zoom;
 	var _y2 = _g.camY + _g.screenH / _g.zoom;
-	var _minGx = max(0, floor(min(world_to_tile_gx(_x1, _y1), world_to_tile_gx(_x2, _y1), world_to_tile_gx(_x1, _y2), world_to_tile_gx(_x2, _y2))) - 2);
-	var _maxGx = min(_world.mapW - 1, ceil(max(world_to_tile_gx(_x1, _y1), world_to_tile_gx(_x2, _y1), world_to_tile_gx(_x1, _y2), world_to_tile_gx(_x2, _y2))) + 2);
-	var _minGy = max(0, floor(min(world_to_tile_gy(_x1, _y1), world_to_tile_gy(_x2, _y1), world_to_tile_gy(_x1, _y2), world_to_tile_gy(_x2, _y2))) - 2);
-	var _maxGy = min(_world.mapH - 1, ceil(max(world_to_tile_gy(_x1, _y1), world_to_tile_gy(_x2, _y1), world_to_tile_gy(_x1, _y2), world_to_tile_gy(_x2, _y2))) + 2);
+	var _viewMinGx = floor(min(world_to_tile_gx(_x1, _y1), world_to_tile_gx(_x2, _y1), world_to_tile_gx(_x1, _y2), world_to_tile_gx(_x2, _y2))) - 2;
+	var _viewMaxGx = ceil(max(world_to_tile_gx(_x1, _y1), world_to_tile_gx(_x2, _y1), world_to_tile_gx(_x1, _y2), world_to_tile_gx(_x2, _y2))) + 2;
+	var _viewMinGy = floor(min(world_to_tile_gy(_x1, _y1), world_to_tile_gy(_x2, _y1), world_to_tile_gy(_x1, _y2), world_to_tile_gy(_x2, _y2))) - 2;
+	var _viewMaxGy = ceil(max(world_to_tile_gy(_x1, _y1), world_to_tile_gy(_x2, _y1), world_to_tile_gy(_x1, _y2), world_to_tile_gy(_x2, _y2))) + 2;
 
-	// Pass 1: terrain, back to front
-	for (var _gy = _minGy; _gy <= _maxGy; _gy++) {
-		for (var _gx = _minGx; _gx <= _maxGx; _gx++) {
+	// The map itself, and the larger area that also gets dark ocean around it
+	var _minGx = max(0, _viewMinGx);
+	var _maxGx = min(_world.mapW - 1, _viewMaxGx);
+	var _minGy = max(0, _viewMinGy);
+	var _maxGy = min(_world.mapH - 1, _viewMaxGy);
+	var _seaMinGx = max(-DEEP_MARGIN, _viewMinGx);
+	var _seaMaxGx = min(_world.mapW - 1 + DEEP_MARGIN, _viewMaxGx);
+	var _seaMinGy = max(-DEEP_MARGIN, _viewMinGy);
+	var _seaMaxGy = min(_world.mapH - 1 + DEEP_MARGIN, _viewMaxGy);
+	var _deepColour = merge_colour(global.biomeColours[BIOME.WATER], c_black, 0.5);
+	var _deepColourAlt = merge_colour(_deepColour, c_black, 0.06);
+
+	// Pass 1: terrain, back to front (with the dark ocean outside the map)
+	for (var _gy = _seaMinGy; _gy <= _seaMaxGy; _gy++) {
+		for (var _gx = _seaMinGx; _gx <= _seaMaxGx; _gx++) {
 			var _cx = tile_to_world_x(_gx, _gy);
 			var _cy = tile_to_world_y(_gx, _gy);
+
+			// Outside the map: dark ocean. It is only drawn, it does not exist in any grid.
+			if (!tile_in_bounds(_world, _gx, _gy)) {
+				draw_diamond(_cx, _cy, _hw, _hh, (((_gx + _gy) mod 2) == 0) ? _deepColourAlt : _deepColour, 1);
+				continue;
+			}
+
 			var _biome = ds_grid_get(_world.biome, _gx, _gy);
 			var _lift = (_biome == BIOME.MOUNTAIN) ? ELEVATION_MOUNTAIN : 0;
 			var _col = global.biomeColours[_biome];
@@ -57,8 +76,13 @@ function draw_world(_g) {
 				draw_diamond(_cx, _cy - _lift, _hw, _hh, _ownerCol, 0.22);
 				draw_border_edges(_world, _gx, _gy, _cx, _cy - _lift, _owner, _ownerCol);
 			}
+			
+			// Paths sit under everything else
+			if (ds_grid_get(_world.pathGrid, _gx, _gy) != NO_ID) {
+				draw_path_tile(_world, _gx, _gy, _cx, _cy - _lift);
+			}
 
-			// Stone and ore deposits (for quarries and mines)
+			// Trees, stone and ore deposits (for lumber mills, quarries and mines)
 			var _resource = ds_grid_get(_world.resource, _gx, _gy);
 			if ((_resource != RES.NONE) && (ds_grid_get(_world.buildingGrid, _gx, _gy) == NO_ID)) {
 				draw_resource_marker(_cx, _cy - _lift, _resource);
@@ -73,7 +97,7 @@ function draw_world(_g) {
 
 			// Hover highlight
 			if ((_gx == _g.hoverGx) && (_gy == _g.hoverGy)) {
-				draw_diamond_outline(_cx, _cy - _lift, _hw, _hh, c_white, 1);
+				draw_diamond_outline(_cx, _cy - _lift, _hw, _hh, _g.demolishMode ? c_red : c_white, 1);
 			}
 		}
 	}
@@ -108,6 +132,10 @@ function draw_world(_g) {
 			}
 		}
 	}
+	
+	// Buyable links between path networks, and the route of the selected units
+	draw_path_links(_g);
+	draw_selected_paths(_g);
 
 	// Building about to be placed
 	if (_g.placeType != NO_ID) {

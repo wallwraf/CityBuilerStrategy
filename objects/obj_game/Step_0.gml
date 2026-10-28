@@ -2,6 +2,7 @@
 
 var _dt = min(delta_time / 1000000, 0.1);
 
+audio_update(id, _dt);
 camera_update_size(id, false);
 
 if (toastTimer > 0) {
@@ -11,6 +12,7 @@ if (toastTimer > 0) {
 // The main menu runs its own input and the background demo game
 if (gameState == GAME_STATE.MENU) {
 	menu_update(id, _dt);
+	sfx_menu_hover(id);
 	exit;
 }
 
@@ -33,27 +35,4 @@ update_world(world, _dt);
 // F1 toggles the debug overlay (mouse and camera numbers)
 if (keyboard_check_pressed(vk_f1)) {
 	debugOverlay = !debugOverlay;
-}
-
-// Debug: regenerate the map
-// R = new seed, Tab = next map type
-if (keyboard_check_pressed(ord("R")) || keyboard_check_pressed(vk_tab)) {
-	if (keyboard_check_pressed(vk_tab)) {
-		settings.mapPreset = (settings.mapPreset + 1) mod array_length(global.mapPresets);
-	}
-	settings.seed = irandom(999999);
-	destroy_world(world);
-	world = create_world(settings);
-	localNation = world.localNation;
-	selectedUnitIds = [];
-	selectedCityId = NO_ID;
-	selectedBuildingId = NO_ID;
-	panel = PANEL.NONE;
-	placeType = NO_ID;
-	if (localNation != NO_ID) {
-		var _capital = bot_get_first_city(world, localNation);
-		if (_capital != undefined) {
-			camera_focus_tile(id, _capital.gx, _capital.gy);
-		}
-	}
 }

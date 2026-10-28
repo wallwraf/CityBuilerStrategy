@@ -36,7 +36,14 @@ function create_unit(_world, _owner, _type, _gx, _gy) {
 		path: [],
 		pathIndex: 0,
 		repathTimer: 0,
-		stuckCount: 0
+		stuckCount: 0,
+		// Boats: ids of the units inside. Land units: the boat that carries them (NO_ID when not aboard)
+		cargo: [],
+		carriedBy: NO_ID,
+		// Tribe units wander around the tile they spawned on
+		homeGx: _gx,
+		homeGy: _gy,
+		wanderTimer: random_range(2, 6)
 	};
 	array_push(_world.units, _unit);
 	ds_grid_set(_world.unitGrid, _gx, _gy, _unit.unitId);
@@ -55,6 +62,116 @@ function kill_unit(_world, _unit, _killerOwner) {
 	if ((_killerOwner >= 0) && (_killerOwner != _unit.owner)) {
 		_world.nationStates[_killerOwner].kills++;
 	}
+	// Everyone aboard goes down with the boat
+	var _cargo = _unit.cargo;
+	_unit.cargo = [];
+	for (var _i = 0; _i < array_length(_cargo); _i++) {
+		var _passenger = _world.units[_cargo[_i]];
+		_passenger.carriedBy = NO_ID;
+		kill_unit(_world, _passenger, _killerOwner);
+	}
+}
+
+// ------------------------------------------------------------
+// Boats and cargo
+// ------------------------------------------------------------
+
+function unit_is_aboard(_unit) {
+	return (_unit.carriedBy != NO_ID);
+}
+
+// Only land units walking on their own legs can be carried (no sea or air units, no envoys)
+function unit_can_be_carried(_unit) {
+	var _stats = global.unitStats[_unit.type];
+	return _unit.alive && (_unit.carriedBy == NO_ID) && (_stats.domain == DOMAIN.LAND) && !_stats.passSolid && (array_length(_unit.cargo) == 0);
+}
+
+function get_boat_cargo_weight(_world, _boat) {
+	var _total = 0;
+	for (var _i = 0; _i < array_length(_boat.cargo); _i++) {
+		_total += global.unitStats[_world.units[_boat.cargo[_i]].type].weight;
+	}
+	return _total;
+}
+
+// Loads every land unit of the boat's nation within 1 tile, as far as the boat's weight capacity allows
+function load_boat(_world, _boat) {
+	var _capacity = global.unitStats[_boat.type].capacity;
+	var _used = get_boat_cargo_weight(_world, _boat);
+	var _loaded = 0;
+	var _full = false;
+	for (var _dx = -1; _dx <= 1; _dx++) {
+		for (var _dy = -1; _dy <= 1; _dy++) {
+			if ((_dx == 0) && (_dy == 0)) {
+				continue;
+			}
+			var _u = get_unit_at(_world, _boat.gx + _dx, _boat.gy + _dy);
+			if ((_u == undefined) || (_u.owner != _boat.owner) || !unit_can_be_carried(_u)) {
+				continue;
+			}
+			var _weight = global.unitStats[_u.type].weight;
+			if (_used + _weight > _capacity) {
+				_full = true;
+				continue;
+			}
+			ds_grid_set(_world.unitGrid, _u.gx, _u.gy, NO_ID);
+			clear_unit_order(_u);
+			_u.carriedBy = _boat.unitId;
+			_u.gx = _boat.gx;
+			_u.gy = _boat.gy;
+			array_push(_boat.cargo, _u.unitId);
+			_used += _weight;
+			_loaded++;
+		}
+	}
+	if (_loaded == 0) {
+		return _full ? "The boat is full" : "No land units of yours within 1 tile";
+	}
+	return "";
+}
+
+// A free tile within 1 tile of the boat where this unit may stand
+function find_unload_tile(_world, _boat, _unit) {
+	for (var _dx = -1; _dx <= 1; _dx++) {
+		for (var _dy = -1; _dy <= 1; _dy++) {
+			var _gx = _boat.gx + _dx;
+			var _gy = _boat.gy + _dy;
+			if (((_dx == 0) && (_dy == 0)) || !tile_is_free(_world, _gx, _gy)) {
+				continue;
+			}
+			if (unit_terrain_ok(_world, _unit, _gx, _gy)) {
+				return [_gx, _gy];
+			}
+		}
+	}
+	return undefined;
+}
+
+// Puts everyone aboard onto valid tiles within 1 tile. Anyone who does not fit stays aboard.
+function unload_boat(_world, _boat) {
+	var _remaining = [];
+	var _unloaded = 0;
+	for (var _i = 0; _i < array_length(_boat.cargo); _i++) {
+		var _u = _world.units[_boat.cargo[_i]];
+		var _spot = find_unload_tile(_world, _boat, _u);
+		if (_spot == undefined) {
+			array_push(_remaining, _u.unitId);
+			continue;
+		}
+		_u.carriedBy = NO_ID;
+		_u.gx = _spot[0];
+		_u.gy = _spot[1];
+		_u.visGx = _boat.gx;
+		_u.visGy = _boat.gy;
+		_u.actionTimer = 0.5;
+		ds_grid_set(_world.unitGrid, _u.gx, _u.gy, _u.unitId);
+		_unloaded++;
+	}
+	_boat.cargo = _remaining;
+	if (_unloaded == 0) {
+		return "No free land within 1 tile to unload onto";
+	}
+	return "";
 }
 
 function get_unit_at(_world, _gx, _gy) {
@@ -73,6 +190,12 @@ function move_unit_to(_world, _unit, _gx, _gy) {
 	_unit.gx = _gx;
 	_unit.gy = _gy;
 	ds_grid_set(_world.unitGrid, _gx, _gy, _unit.unitId);
+	// Passengers travel with the boat
+	for (var _c = 0; _c < array_length(_unit.cargo); _c++) {
+		var _passenger = _world.units[_unit.cargo[_c]];
+		_passenger.gx = _gx;
+		_passenger.gy = _gy;
+	}
 	// Naval mines and traps go off when an enemy lands on them
 	trigger_building_on_enter(_world, _unit);
 }
@@ -82,7 +205,12 @@ function damage_unit(_world, _unit, _amount, _attackerOwner) {
 	if (!_unit.alive) {
 		return;
 	}
-	_unit.hp -= _amount * (1 - global.unitStats[_unit.type].armor);
+	register_combat(_world, _unit.gx, _unit.gy, _unit.owner, _attackerOwner);
+	var _armor = global.unitStats[_unit.type].armor;
+	if (_unit.owner >= 0) {
+		_armor += get_research_bonus(_world, _unit.owner, RFX.ARMOR);
+	}
+	_unit.hp -= _amount * (1 - min(0.9, _armor));
 	if (_unit.hp <= 0) {
 		kill_unit(_world, _unit, _attackerOwner);
 	}
@@ -125,7 +253,7 @@ function tile_distance(_gx1, _gy1, _gx2, _gy2) {
 function find_aura_source(_world, _unit, _ability, _friendly) {
 	for (var _i = 0; _i < array_length(_world.units); _i++) {
 		var _o = _world.units[_i];
-		if (!_o.alive || (_o.unitId == _unit.unitId)) {
+		if (!_o.alive || (_o.unitId == _unit.unitId) || unit_is_aboard(_o)) {
 			continue;
 		}
 		var _s = global.unitStats[_o.type];
@@ -146,6 +274,9 @@ function get_unit_attack_damage(_world, _unit) {
 	var _priest = find_aura_source(_world, _unit, ABILITY.BUFF, true);
 	if (_priest != undefined) {
 		_damage *= global.unitStats[_priest.type].buffMult;
+	}
+	if (_unit.owner >= 0) {
+		_damage *= 1 + get_research_bonus(_world, _unit.owner, RFX.DAMAGE);
 	}
 	return _damage;
 }
@@ -240,6 +371,7 @@ function damage_building(_world, _b, _amount, _attackerOwner) {
 	if (!_b.alive) {
 		return;
 	}
+	register_combat(_world, _b.gx, _b.gy, _b.owner, _attackerOwner);
 	_b.hp -= _amount;
 	if (_b.hp <= 0) {
 		remove_building(_world, _b);
@@ -309,6 +441,16 @@ function find_path(_world, _unit, _goalGx, _goalGy, _blockOccupied) {
 		return [];
 	}
 
+	// Paths make a step cheaper (the unit moves one tile further), so the search takes them
+	// whenever they get the unit there sooner
+	var _usePaths = (_world.pathTotal > 0) && unit_can_use_paths(_unit);
+	var _pathStepCost = 1;
+	if (_usePaths) {
+		var _moveRange = global.unitStats[_unit.type].moveRange;
+		_pathStepCost = _moveRange / (_moveRange + 1);
+	}
+	var _maxExpanded = _usePaths ? 9000 : 3000;
+
 	ds_grid_clear(_world.pfCost, 999999);
 	ds_grid_clear(_world.pfParent, -1);
 	ds_grid_clear(_world.pfClosed, 0);
@@ -320,7 +462,7 @@ function find_path(_world, _unit, _goalGx, _goalGy, _blockOccupied) {
 	var _bestH = tile_distance(_unit.gx, _unit.gy, _goalGx, _goalGy);
 	var _expanded = 0;
 
-	while (!ds_priority_empty(_open) && (_expanded < 3000)) {
+	while (!ds_priority_empty(_open) && (_expanded < _maxExpanded)) {
 		var _node = ds_priority_delete_min(_open);
 		var _cx = _node mod _w;
 		var _cy = _node div _w;
@@ -341,6 +483,7 @@ function find_path(_world, _unit, _goalGx, _goalGy, _blockOccupied) {
 		}
 
 		var _g = ds_grid_get(_world.pfCost, _cx, _cy);
+		var _onPath = _usePaths && tile_has_path_of(_world, _unit.owner, _cx, _cy);
 		for (var _ox = -1; _ox <= 1; _ox++) {
 			for (var _oy = -1; _oy <= 1; _oy++) {
 				if ((_ox == 0) && (_oy == 0)) {
@@ -360,12 +503,13 @@ function find_path(_world, _unit, _goalGx, _goalGy, _blockOccupied) {
 				if (!unit_step_ok(_world, _unit, _cx, _cy, _nx, _ny)) {
 					continue;
 				}
-				var _ng = _g + 1;
+				var _step = (_onPath && tile_has_path_of(_world, _unit.owner, _nx, _ny)) ? _pathStepCost : 1;
+				var _ng = _g + _step;
 				if (_ng < ds_grid_get(_world.pfCost, _nx, _ny)) {
 					ds_grid_set(_world.pfCost, _nx, _ny, _ng);
 					ds_grid_set(_world.pfParent, _nx, _ny, _node);
 					// The small extra term makes the search lean toward the goal instead of fanning out
-					var _hn = tile_distance(_nx, _ny, _goalGx, _goalGy) + 0.001 * (abs(_nx - _goalGx) + abs(_ny - _goalGy));
+					var _hn = tile_distance(_nx, _ny, _goalGx, _goalGy) * _pathStepCost + 0.001 * (abs(_nx - _goalGx) + abs(_ny - _goalGy));
 					ds_priority_add(_open, _ny * _w + _nx, _ng + _hn);
 				}
 			}
@@ -392,7 +536,9 @@ function unit_follow_path(_world, _unit) {
 	var _px = _unit.gx;
 	var _py = _unit.gy;
 	var _landing = -1;
-	for (var _k = 0; _k < _stats.moveRange; _k++) {
+	// Standing on one of your own paths adds one tile to each move
+	var _range = _stats.moveRange + get_path_move_bonus(_world, _unit);
+	for (var _k = 0; _k < _range; _k++) {
 		var _idx = _unit.pathIndex + _k;
 		if (_idx >= _count) {
 			break;
@@ -448,7 +594,7 @@ function unit_move_toward(_world, _unit, _gx, _gy) {
 function update_units(_world, _dt) {
 	for (var _i = 0; _i < array_length(_world.units); _i++) {
 		var _u = _world.units[_i];
-		if (!_u.alive) {
+		if (!_u.alive || unit_is_aboard(_u)) {
 			continue;
 		}
 		var _stats = global.unitStats[_u.type];
@@ -473,6 +619,9 @@ function update_unit_order(_world, _u, _stats) {
 		case ORDER.NONE:
 			if (_stats.damage > 0) {
 				unit_auto_attack(_world, _u, _stats);
+			}
+			if ((_u.owner == TRIBE_OWNER) && (_u.order == ORDER.NONE)) {
+				update_tribe_wander(_world, _u);
 			}
 			break;
 
@@ -659,6 +808,7 @@ function reassign_capital(_world, _owner) {
 }
 
 function damage_city(_world, _city, _amount, _attackerOwner) {
+	register_combat(_world, _city.gx, _city.gy, _city.owner, _attackerOwner);
 	_city.hp -= _amount;
 	if (_city.hp <= 0) {
 		capture_city(_world, _city, _attackerOwner);
@@ -765,11 +915,47 @@ function get_nation_income(_world, _owner) {
 			_total += get_building_income(_b);
 		}
 	}
+	return _total * (1 + get_research_bonus(_world, _owner, RFX.GOLD));
+}
+
+// Sum of the passive bonuses (see RFX) from everything the nation has researched
+function get_research_bonus(_world, _owner, _fx) {
+	if ((_owner < 0) || (_owner >= MAX_NATIONS)) {
+		return 0;
+	}
+	var _researched = _world.nationStates[_owner].researched;
+	var _total = 0;
+	for (var _r = 0; _r < RESEARCH.COUNT; _r++) {
+		var _def = global.researchDefs[_r];
+		if (_researched[_r] && (_def.fx == _fx)) {
+			_total += _def.amount;
+		}
+	}
 	return _total;
 }
 
+// Tribes idle by walking to a random tile 1 or 2 tiles from where they started,
+// so anyone who builds near a camp gets visited
+function update_tribe_wander(_world, _u) {
+	if (_world.time < _u.wanderTimer) {
+		return;
+	}
+	_u.wanderTimer = _world.time + random_range(3, 7);
+	for (var _try = 0; _try < 6; _try++) {
+		var _gx = _u.homeGx + irandom_range(-2, 2);
+		var _gy = _u.homeGy + irandom_range(-2, 2);
+		if (tile_distance(_gx, _gy, _u.gx, _u.gy) == 0) {
+			continue;
+		}
+		if (tile_is_free(_world, _gx, _gy) && unit_terrain_ok(_world, _u, _gx, _gy)) {
+			give_move_order(_u, _gx, _gy);
+			return;
+		}
+	}
+}
+
 function get_rp_rate(_world, _owner) {
-	return BASE_RP_RATE + get_nation_lab_rate(_world, _owner);
+	return BASE_RP_RATE + get_nation_lab_rate(_world, _owner) + get_research_bonus(_world, _owner, RFX.RP);
 }
 
 function update_economy(_world, _dt) {
@@ -794,6 +980,7 @@ function update_world(_world, _dt) {
 		_world.statsTimer = 1;
 		update_nation_stats(_world);
 	}
+	update_battles(_world, _dt);
 	update_bots(_world, _dt);
 }
 
@@ -839,7 +1026,9 @@ function spawn_unit_near(_world, _owner, _type, _gx, _gy) {
 	if (_tile == undefined) {
 		return undefined;
 	}
-	return create_unit(_world, _owner, _type, _tile[0], _tile[1]);
+	var _spawned = create_unit(_world, _owner, _type, _tile[0], _tile[1]);
+	audio_event(_world, "spawn", _type, _tile[0], _tile[1], _owner);
+	return _spawned;
 }
 
 // ------------------------------------------------------------
@@ -881,7 +1070,7 @@ function apply_command(_world, _cmd) {
 			var _moved = 0;
 			for (var _i = 0; _i < array_length(_cmd.unitIds); _i++) {
 				var _u = _world.units[_cmd.unitIds[_i]];
-				if (_u.alive && (_u.owner == _cmd.owner) && unit_terrain_ok(_world, _u, _cmd.gx, _cmd.gy)) {
+				if (_u.alive && !unit_is_aboard(_u) && (_u.owner == _cmd.owner) && unit_terrain_ok(_world, _u, _cmd.gx, _cmd.gy)) {
 					give_move_order(_u, _cmd.gx, _cmd.gy);
 					_moved++;
 				}
@@ -915,7 +1104,7 @@ function apply_command(_world, _cmd) {
 			var _attackers = 0;
 			for (var _a = 0; _a < array_length(_cmd.unitIds); _a++) {
 				var _atk = _world.units[_cmd.unitIds[_a]];
-				if (_atk.alive && (_atk.owner == _cmd.owner) && (global.unitStats[_atk.type].damage > 0)) {
+				if (_atk.alive && !unit_is_aboard(_atk) && (_atk.owner == _cmd.owner) && (global.unitStats[_atk.type].damage > 0)) {
 					give_attack_order(_atk, _cmd.targetKind, _cmd.targetId);
 					_attackers++;
 				}
@@ -1010,6 +1199,7 @@ function apply_command(_world, _cmd) {
 			_up.level++;
 			_up.maxHp = get_city_max_hp(_up.level);
 			_up.hp = min(_up.maxHp, _up.hp + 80);
+			audio_event(_world, "upgrade", 0, _up.gx, _up.gy, _cmd.owner);
 			recalculate_borders(_world);
 			return "";
 
@@ -1023,7 +1213,11 @@ function apply_command(_world, _cmd) {
 				return "Not enough gold";
 			}
 			_state.gold -= _buildDef.cost;
-			create_building(_world, _cmd.owner, _cmd.buildingType, _cmd.gx, _cmd.gy, _cmd.axis);
+			if (_buildDef.place == PLACE.PATH) {
+				place_path_tile(_world, _cmd.owner, _cmd.gx, _cmd.gy);
+			} else {
+				create_building(_world, _cmd.owner, _cmd.buildingType, _cmd.gx, _cmd.gy, _cmd.axis);
+			}
 			return "";
 
 		case CMD.UPGRADE_BUILDING:
@@ -1040,6 +1234,7 @@ function apply_command(_world, _cmd) {
 			}
 			_state.gold -= _ubCost;
 			_ub.level++;
+			audio_event(_world, "upgrade", 0, _ub.gx, _ub.gy, _cmd.owner);
 			var _newMax = get_building_max_hp(_ub.type, _ub.level);
 			_ub.hp += _newMax - _ub.maxHp;
 			_ub.maxHp = _newMax;
@@ -1110,6 +1305,34 @@ function apply_command(_world, _cmd) {
 			_state.gold -= _mineDef.cost;
 			create_building(_world, _cmd.owner, BUILDING.NAVAL_MINE, _boat.gx, _boat.gy, -1);
 			return "";
+			
+		case CMD.TOGGLE_CARGO:
+			// A boat with passengers unloads them, an empty boat loads whatever land units are next to it
+			var _handled = 0;
+			var _cargoMsg = "";
+			for (var _b = 0; _b < array_length(_cmd.unitIds); _b++) {
+				var _carrier = _world.units[_cmd.unitIds[_b]];
+				if (!_carrier.alive || (_carrier.owner != _cmd.owner) || (global.unitStats[_carrier.type].capacity <= 0)) {
+					continue;
+				}
+				_handled++;
+				var _res = (array_length(_carrier.cargo) > 0) ? unload_boat(_world, _carrier) : load_boat(_world, _carrier);
+				if (_res != "") {
+					_cargoMsg = _res;
+				} else {
+					_cargoMsg = "";
+				}
+			}
+			if (_handled == 0) {
+				return "Select a Traveler Boat first";
+			}
+			return _cargoMsg;
+
+		case CMD.CONNECT_PATH:
+			return connect_path_link(_world, _cmd.owner, _cmd.gx, _cmd.gy, _cmd.targetId);
+
+		case CMD.DEMOLISH:
+			return demolish_target(_world, _cmd.owner, _cmd.buildingId, _cmd.gx, _cmd.gy);
 
 		case CMD.DECLARE_WAR:
 			return declare_war(_world, _cmd.owner, _cmd.targetNation, false);

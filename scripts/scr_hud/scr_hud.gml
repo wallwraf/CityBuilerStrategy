@@ -6,6 +6,11 @@
 // zone: 0 = top tabs, 1 = side panel, 2 = bottom bar, 3 = treaty popup
 // ============================================================
 
+#macro RESEARCH_NODE_W 132
+#macro RESEARCH_NODE_H 64
+
+draw_set_font(fnt_txt);
+
 function make_button(_label, _sub, _action, _arg, _arg2, _enabled, _why, _tip) {
 	return {
 		x: 0, y: 0, w: BUTTON_W, h: BUTTON_H,
@@ -18,7 +23,9 @@ function make_button(_label, _sub, _action, _arg, _arg2, _enabled, _why, _tip) {
 		why: _why,
 		tip: _tip,
 		active: false,
-		zone: 2
+		zone: 2,
+		branch: NO_ID,
+		state: 0
 	};
 }
 
@@ -35,7 +42,11 @@ function get_relation_text(_world, _a, _b) {
 
 function get_unit_tip(_type) {
 	var _s = global.unitStats[_type];
-	return _s.desc + "\\nHP " + string(_s.maxHp) + "   Damage " + string(_s.damage) + "   Range " + string(_s.range) + "   Move " + string(_s.moveRange);
+	var _text = _s.desc + "\\nHP " + string(_s.maxHp) + "   Damage " + string(_s.damage) + "   Range " + string(_s.range) + "   Move " + string(_s.moveRange) + "   Weight " + string(_s.weight);
+	if (_s.capacity > 0) {
+		_text += "\\nCarries up to " + string(_s.capacity) + " weight of land units";
+	}
+	return _text;
 }
 
 // ------------------------------------------------------------
@@ -81,62 +92,186 @@ function get_hud_buttons(_g) {
 		array_push(_list, _tab);
 	}
 
-	if (_g.panel != PANEL.NONE) {
-		add_panel_buttons(_g, _list, _state);
+	if (_g.panel == PANEL.BUILD) {
+		add_build_buttons(_g, _list, _state);
+	} else if (panel_is_overlay(_g.panel)) {
+		add_overlay_buttons(_g, _list, _state);
 	}
-	add_bottom_buttons(_g, _list, _state);
+
+	// The unit and building buttons are hidden behind an overlay screen
+	if (!panel_is_overlay(_g.panel)) {
+		add_bottom_buttons(_g, _list, _state);
+	}
 	return _list;
 }
 
-function add_panel_buttons(_g, _list, _state) {
+// ------------------------------------------------------------
+// Build menu (scrollable) and overlay screens
+// ------------------------------------------------------------
+
+function panel_is_overlay(_panel) {
+	return (_panel == PANEL.RESEARCH) || (_panel == PANEL.DIPLOMACY) || (_panel == PANEL.IDEOLOGY);
+}
+
+// The centred rectangle the overlay screens are drawn in
+function get_overlay_rect(_g) {
+	var _w = min(_g.screenW - 40, 900);
+	var _h = min(_g.screenH - TOP_H - 40, 540);
+	return {
+		x: (_g.screenW - _w) / 2,
+		y: TOP_H + (_g.screenH - TOP_H - _h) / 2,
+		w: _w,
+		h: _h
+	};
+}
+
+function point_in_overlay(_g, _mx, _my) {
+	var _r = get_overlay_rect(_g);
+	return (_mx >= _r.x) && (_mx <= _r.x + _r.w) && (_my >= _r.y) && (_my <= _r.y + _r.h);
+}
+
+function get_build_list_top() {
+	return TOP_H + 44;
+}
+
+function get_build_item_count() {
+	var _count = 0;
+	for (var _t = 0; _t < BUILDING.COUNT; _t++) {
+		var _def = global.buildingDefs[_t];
+		if (_def.buildable && !_def.hidden) {
+			_count++;
+		}
+	}
+	return _count + 1;
+}
+
+// How far the build menu can scroll (0 when everything fits)
+function get_build_scroll_max(_g) {
+	var _content = get_build_item_count() * 52;
+	var _visible = _g.screenH - get_build_list_top() - 8;
+	return max(0, _content - _visible);
+}
+
+function mouse_over_build_panel(_g, _mx, _my) {
+	return (_g.panel == PANEL.BUILD) && (_mx >= _g.screenW - PANEL_W) && (_my >= TOP_H);
+}
+
+function add_build_buttons(_g, _list, _state) {
 	var _world = _g.world;
 	var _local = _g.localNation;
+	_g.panelScroll = clamp(_g.panelScroll, 0, get_build_scroll_max(_g));
 	var _x = _g.screenW - PANEL_W + 8;
-	var _y = TOP_H + 44;
+	var _listTop = get_build_list_top();
 	var _w = PANEL_W - 16;
 	var _h = 46;
-	var _items = [];
+	var _index = 0;
 
-	if (_g.panel == PANEL.BUILD) {
-		for (var _t = 0; _t < BUILDING.COUNT; _t++) {
-			var _def = global.buildingDefs[_t];
-			if (!_def.buildable || _def.hidden) {
-				continue;
-			}
-			var _needs = ((_def.reqResearch != NO_ID) && !nation_has_research(_world, _local, _def.reqResearch));
-			var _sub = string(_def.cost) + " gold";
-			if (_def.solid) {
-				_sub += "   solid";
-			}
-			var _why = "";
-			if (_needs) {
-				_why = "Needs: " + global.researchDefs[_def.reqResearch].researchName;
-			} else if (_state.gold < _def.cost) {
-				_why = "Not enough gold";
-			}
-			var _tip = _def.desc;
-			if (_def.place == PLACE.EDGE) {
-				_tip += "\\nPlaced on the tile edge closest to the cursor";
-			}
-			array_push(_items, make_button(_def.buildingName, (_why != "") ? _why : _sub, UI_ACT.PICK_BUILDING, _t, NO_ID, (_why == ""), _why, _tip));
+	for (var _t = 0; _t < BUILDING.COUNT; _t++) {
+		var _def = global.buildingDefs[_t];
+		if (!_def.buildable || _def.hidden) {
+			continue;
 		}
-	} else if (_g.panel == PANEL.RESEARCH) {
+		var _needs = ((_def.reqResearch != NO_ID) && !nation_has_research(_world, _local, _def.reqResearch));
+		var _sub = string(_def.cost) + " gold";
+		if (_def.solid) {
+			_sub += "   solid";
+		}
+		var _why = "";
+		if (_needs) {
+			_why = "Needs: " + global.researchDefs[_def.reqResearch].researchName;
+		} else if (_state.gold < _def.cost) {
+			_why = "Not enough gold";
+		}
+		var _tip = _def.desc;
+		if (_def.place == PLACE.EDGE) {
+			_tip += "\\nPlaced on the tile edge closest to the cursor";
+		}
+		var _b = make_button(_def.buildingName, (_why != "") ? _why : _sub, UI_ACT.PICK_BUILDING, _t, NO_ID, (_why == ""), _why, _tip);
+		_b.x = _x;
+		_b.y = _listTop + _index * 52 - _g.panelScroll;
+		_b.w = _w;
+		_b.h = _h;
+		_b.zone = 1;
+		_index++;
+
+		// Skip the ones scrolled completely out of view
+		if ((_b.y + _b.h < _listTop) || (_b.y > _g.screenH)) {
+			continue;
+		}
+		array_push(_list, _b);
+		
+	}
+	
+	// The demolish tool sits at the end of the list
+	var _demo = make_button("Demolish", "Click a building or path", UI_ACT.TOGGLE_DEMOLISH, 0, NO_ID, true, "", "Removes your buildings and paths and refunds half their cost");
+	_demo.x = _x;
+	_demo.y = _listTop + _index * 52 - _g.panelScroll;
+	_demo.w = _w;
+	_demo.h = _h;
+	_demo.zone = 1;
+	_demo.active = _g.demolishMode;
+	if (!((_demo.y + _demo.h < _listTop) || (_demo.y > _g.screenH))) {
+		array_push(_list, _demo);
+	}
+}
+
+// Where a research node sits inside the overlay (shared by the buttons and the link lines)
+function get_research_node_rect(_g, _r) {
+	var _o = get_overlay_rect(_g);
+	var _def = global.researchDefs[_r];
+	var _cx = _o.x + (_o.w / 3) * (_def.branch + 0.5);
+	return {
+		x: _cx - RESEARCH_NODE_W - 6 + _def.col * (RESEARCH_NODE_W + 12),
+		y: _o.y + 170 + (_def.row - 1) * 100,
+		w: RESEARCH_NODE_W,
+		h: RESEARCH_NODE_H
+	};
+}
+
+function add_overlay_buttons(_g, _list, _state) {
+	var _world = _g.world;
+	var _local = _g.localNation;
+	var _o = get_overlay_rect(_g);
+
+	// Close button
+	var _close = make_button("Close", "", UI_ACT.TOGGLE_PANEL, _g.panel, NO_ID, true, "", "");
+	_close.x = _o.x + _o.w - 90;
+	_close.y = _o.y + 10;
+	_close.w = 80;
+	_close.h = 30;
+	_close.zone = 4;
+	array_push(_list, _close);
+
+	if (_g.panel == PANEL.RESEARCH) {
 		for (var _r = 0; _r < RESEARCH.COUNT; _r++) {
 			var _rdef = global.researchDefs[_r];
 			var _rSub = string(_rdef.cost) + " RP";
 			var _rWhy = "";
+			var _rState = 1;
 			if (_state.researched[_r]) {
 				_rSub = "Researched";
 				_rWhy = "Already researched";
+				_rState = 2;
 			} else if ((_rdef.prereq != NO_ID) && !_state.researched[_rdef.prereq]) {
-				_rSub = "Needs: " + global.researchDefs[_rdef.prereq].researchName;
-				_rWhy = _rSub;
+				_rSub = "Locked";
+				_rWhy = "Needs: " + global.researchDefs[_rdef.prereq].researchName;
+				_rState = 0;
 			} else if (_state.rp < _rdef.cost) {
 				_rWhy = "Not enough research points";
 			}
-			array_push(_items, make_button(_rdef.researchName, _rSub, UI_ACT.RESEARCH, _r, NO_ID, (_rWhy == ""), _rWhy, _rdef.desc));
+			var _rect = get_research_node_rect(_g, _r);
+			var _node = make_button(_rdef.researchName, _rSub, UI_ACT.RESEARCH, _r, NO_ID, (_rWhy == ""), _rWhy, _rdef.desc + "\\nCost: " + string(_rdef.cost) + " RP");
+			_node.x = _rect.x;
+			_node.y = _rect.y;
+			_node.w = _rect.w;
+			_node.h = _rect.h;
+			_node.zone = 4;
+			_node.branch = _rdef.branch;
+			_node.state = _rState;
+			array_push(_list, _node);
 		}
 	} else if (_g.panel == PANEL.DIPLOMACY) {
+		var _row = 0;
 		for (var _n = 0; _n < MAX_NATIONS; _n++) {
 			var _other = _world.nationStates[_n];
 			if ((_n == _local) || !_other.active || _other.eliminated) {
@@ -152,18 +287,15 @@ function add_panel_buttons(_g, _list, _state) {
 			if (_other.slotType == SLOT_TYPE.BOT) {
 				_dTip += "\\nIdeology: " + global.ideologyNames[_other.ideology];
 			}
-			var _b = make_button(get_owner_name(_n), _dSub, UI_ACT.DECLARE_WAR, _n, NO_ID, _canWar, "You have no peace treaty with them", _dTip);
-			array_push(_items, _b);
+			var _card = make_button(get_owner_name(_n), _dSub, UI_ACT.DECLARE_WAR, _n, NO_ID, _canWar, "You have no peace treaty with them", _dTip);
+			_card.x = _o.x + 20;
+			_card.y = _o.y + 56 + _row * 56;
+			_card.w = _o.w - 40;
+			_card.h = 50;
+			_card.zone = 4;
+			array_push(_list, _card);
+			_row++;
 		}
-	}
-
-	for (var _i = 0; _i < array_length(_items); _i++) {
-		_items[_i].x = _x;
-		_items[_i].y = _y + _i * (_h + 6);
-		_items[_i].w = _w;
-		_items[_i].h = _h;
-		_items[_i].zone = 1;
-		array_push(_list, _items[_i]);
 	}
 }
 
@@ -173,8 +305,10 @@ function add_bottom_buttons(_g, _list, _state) {
 	var _local = _g.localNation;
 	var _items = [];
 
-	if (_g.placeType != NO_ID) {
+		if (_g.placeType != NO_ID) {
 		array_push(_items, make_button("Cancel", "Stop placing (right click)", UI_ACT.PICK_BUILDING, NO_ID, NO_ID, true, "", ""));
+	} else if (_g.demolishMode) {
+		array_push(_items, make_button("Stop Demolishing", "Right click", UI_ACT.TOGGLE_DEMOLISH, 0, NO_ID, true, "", ""));
 	} else if ((_g.selectedCityId != NO_ID) && (_world.cities[_g.selectedCityId].owner == _local)) {
 		var _city = _world.cities[_g.selectedCityId];
 		for (var _t = 0; _t < UNIT_TYPE.COUNT; _t++) {
@@ -230,10 +364,18 @@ function add_bottom_buttons(_g, _list, _state) {
 			_bUpWhy = (_state.gold >= _bCost) ? "" : "Not enough gold";
 		}
 		array_push(_items, make_button("Upgrade", _bUpSub, UI_ACT.UPGRADE_BUILDING, _b.buildingId, NO_ID, (_bUpWhy == ""), _bUpWhy, ""));
+		array_push(_items, make_button("Demolish", "Refund " + string(get_demolish_refund(_b.type)) + " gold", UI_ACT.DEMOLISH, _b.buildingId, NO_ID, true, "", "Removes the building and refunds half its cost (Delete key)"));
 	} else if (array_length(_g.selectedUnitIds) > 0) {
 		var _explorer = get_selected_explorer_on_habitable(_g);
 		if (_explorer != undefined) {
 			array_push(_items, make_button("Found City", get_unit_name(_local, UNIT_TYPE.EXPLORER), UI_ACT.FOUND_CITY, _explorer.unitId, NO_ID, true, "", "Turn this habitable tile into a city"));
+		}
+		var _carrier = get_selected_carrier(_g);
+		if (_carrier != undefined) {
+			var _capacity = global.unitStats[_carrier.type].capacity;
+			var _used = get_boat_cargo_weight(_world, _carrier);
+			var _hasCargo = (array_length(_carrier.cargo) > 0);
+			array_push(_items, make_button(_hasCargo ? "Unload (E)" : "Load (E)", "Weight " + string(_used) + "/" + string(_capacity), UI_ACT.TOGGLE_CARGO, _carrier.unitId, NO_ID, true, "", "Load: takes every land unit of your nation within 1 tile\\nUnload: puts them on free tiles within 1 tile"));
 		}
 		var _boat = get_selected_boat(_g);
 		if (_boat != undefined) {
@@ -250,7 +392,7 @@ function add_bottom_buttons(_g, _list, _state) {
 
 	// Lay out from the bottom left, wrapping upward. The side panel takes space on the right.
 	var _gap = 8;
-	var _availW = _g.screenW - 24 - ((_g.panel != PANEL.NONE) ? (PANEL_W + 8) : 0);
+	var _availW = _g.screenW - 24 - ((_g.panel == PANEL.BUILD) ? (PANEL_W + 8) : 0);
 	var _perRow = max(1, floor((_availW + _gap) / (BUTTON_W + _gap)));
 	for (var _i = 0; _i < array_length(_items); _i++) {
 		var _row = floor(_i / _perRow);
@@ -283,6 +425,16 @@ function get_selected_explorer_on_habitable(_g) {
 	return undefined;
 }
 
+function get_selected_carrier(_g) {
+	for (var _i = 0; _i < array_length(_g.selectedUnitIds); _i++) {
+		var _u = _g.world.units[_g.selectedUnitIds[_i]];
+		if (_u.alive && (global.unitStats[_u.type].capacity > 0)) {
+			return _u;
+		}
+	}
+	return undefined;
+}
+
 function get_selected_boat(_g) {
 	for (var _i = 0; _i < array_length(_g.selectedUnitIds); _i++) {
 		var _u = _g.world.units[_g.selectedUnitIds[_i]];
@@ -294,6 +446,10 @@ function get_selected_boat(_g) {
 }
 
 function point_in_button(_b, _mx, _my) {
+	// Build menu buttons are clipped by the top of the list
+	if ((_b.zone == 1) && (_my < get_build_list_top())) {
+		return false;
+	}
 	return (_mx >= _b.x) && (_mx <= _b.x + _b.w) && (_my >= _b.y) && (_my <= _b.y + _b.h);
 }
 
@@ -318,7 +474,11 @@ function hud_captures_mouse(_g, _mx, _my) {
 	if (_my < TOP_H) {
 		return true;
 	}
-	if ((_g.panel != PANEL.NONE) && (_mx >= _g.screenW - PANEL_W)) {
+	// An overlay screen blocks everything below the top bar
+	if (panel_is_overlay(_g.panel)) {
+		return true;
+	}
+	if (mouse_over_build_panel(_g, _mx, _my)) {
 		return true;
 	}
 	return (get_hud_button_at(_g, _mx, _my) != undefined);
@@ -326,20 +486,24 @@ function hud_captures_mouse(_g, _mx, _my) {
 
 function execute_hud_button(_g, _button) {
 	if (!_button.enabled) {
+		sfx_play("ui_error");
 		if (_button.why != "") {
 			set_toast(_g, _button.why);
 		}
 		return;
 	}
+	sfx_play("ui_click");
 	var _local = _g.localNation;
 	var _cmd;
 	switch (_button.action) {
 		case UI_ACT.TOGGLE_PANEL:
 			_g.panel = (_g.panel == _button.arg) ? PANEL.NONE : _button.arg;
+			_g.panelScroll = 0;
 			return;
 
 		case UI_ACT.PICK_BUILDING:
 			// NO_ID cancels placing
+			_g.demolishMode = false;
 			_g.placeType = _button.arg;
 			_g.placeMsg = "";
 			if (_button.arg != NO_ID) {
@@ -389,6 +553,36 @@ function execute_hud_button(_g, _button) {
 			_cmd = make_command(CMD.PLACE_MINE, _local);
 			array_push(_cmd.unitIds, _button.arg);
 			break;
+		
+		case UI_ACT.TOGGLE_DEMOLISH:
+			_g.demolishMode = !_g.demolishMode;
+			_g.placeType = NO_ID;
+			_g.placeMsg = "";
+			if (_g.demolishMode) {
+				clear_selection(_g);
+			}
+			return;
+
+		case UI_ACT.DEMOLISH:
+			var _demoB = _g.world.buildings[_button.arg];
+			var _demoRefund = get_demolish_refund(_demoB.type);
+			_cmd = make_command(CMD.DEMOLISH, _local);
+			_cmd.buildingId = _button.arg;
+			if (run_player_command(_g, _cmd) == "") {
+				set_toast(_g, "Demolished. Refunded " + string(_demoRefund) + " gold");
+				_g.selectedBuildingId = NO_ID;
+			}
+			return;
+		
+		case UI_ACT.TOGGLE_CARGO:
+			_cmd = make_command(CMD.TOGGLE_CARGO, _local);
+			for (var _s = 0; _s < array_length(_g.selectedUnitIds); _s++) {
+				var _sel = _g.world.units[_g.selectedUnitIds[_s]];
+				if (global.unitStats[_sel.type].capacity > 0) {
+					array_push(_cmd.unitIds, _sel.unitId);
+				}
+			}
+			break;
 
 		case UI_ACT.DECLARE_WAR:
 			_cmd = make_command(CMD.DECLARE_WAR, _local);
@@ -413,6 +607,11 @@ function execute_hud_button(_g, _button) {
 function get_selection_lines(_g) {
 	var _world = _g.world;
 	var _lines = [];
+	
+	if (_g.demolishMode) {
+		array_push(_lines, "Demolish: click one of your buildings or paths (right click to stop). Half the cost is refunded.");
+		return _lines;
+	}
 
 	if (_g.placeType != NO_ID) {
 		var _def = global.buildingDefs[_g.placeType];
@@ -468,7 +667,10 @@ function get_selection_lines(_g) {
 		var _u = _world.units[_g.selectedUnitIds[0]];
 		var _s = global.unitStats[_u.type];
 		array_push(_lines, get_unit_name(_u.owner, _u.type) + "   (" + _s.subtitle + ")   HP " + string(ceil(_u.hp)) + "/" + string(_s.maxHp));
-		array_push(_lines, _s.desc + "   Damage " + string(_s.damage) + "   Range " + string(_s.range));
+		array_push(_lines, _s.desc + "   Damage " + string(_s.damage) + "   Range " + string(_s.range) + "   Weight " + string(_s.weight));
+		if (_s.capacity > 0) {
+			array_push(_lines, "Cargo: " + string(array_length(_u.cargo)) + " units, weight " + string(get_boat_cargo_weight(_world, _u)) + "/" + string(_s.capacity) + "   (E loads land units within 1 tile, E again unloads)");
+		}
 	} else if (_count > 1) {
 		array_push(_lines, "Selected units: " + string(_count));
 	}
@@ -553,16 +755,17 @@ function draw_hud(_g) {
 	}
 
 	// Side panel
-	if (_g.panel != PANEL.NONE) {
-		draw_side_panel(_g);
+	// Build menu (the other tabs are overlay screens, drawn after the buttons)
+	var _buttons = get_hud_buttons(_g);
+	if (_g.panel == PANEL.BUILD) {
+		draw_side_panel(_g, _buttons, _mx, _my);
 	}
 
 	// Buttons
-	var _buttons = get_hud_buttons(_g);
 	var _bottomTop = _g.screenH - 26 - BUTTON_H;
 	for (var _i = 0; _i < array_length(_buttons); _i++) {
 		var _b = _buttons[_i];
-		if (_b.zone == 3) {
+		if ((_b.zone == 1) || (_b.zone == 3) || (_b.zone == 4)) {
 			continue;
 		}
 		draw_hud_button(_b, _mx, _my);
@@ -593,9 +796,14 @@ function draw_hud(_g) {
 	draw_set_halign(fa_right);
 	draw_set_valign(fa_bottom);
 	draw_set_colour(c_ltgray);
-	draw_text(_g.screenW - 12 - ((_g.panel != PANEL.NONE) ? PANEL_W : 0), _g.screenH - 6, "LMB select / order  |  drag box  |  MMB pan  |  wheel zoom  |  RMB cancel / deselect  |  R new seed  |  Tab map type  |  F1 debug");
+	draw_text(_g.screenW - 12 - ((_g.panel == PANEL.BUILD) ? PANEL_W : 0), _g.screenH - 6, "LMB select / order  |  drag box  |  MMB pan  |  wheel zoom  |  RMB cancel / deselect  |  E load / unload boat  |  F1 debug");
 	draw_set_halign(fa_left);
-
+	
+	// Overlay screens (research tree, diplomacy, ideology)
+	if (panel_is_overlay(_g.panel)) {
+		draw_overlay(_g, _buttons, _mx, _my);
+	}
+	
 	draw_notices(_g);
 
 	// Hover tooltip
@@ -669,10 +877,9 @@ function draw_notices(_g) {
 	draw_set_alpha(1);
 }
 
-function draw_side_panel(_g) {
-	var _world = _g.world;
-	var _local = _g.localNation;
+function draw_side_panel(_g, _buttons, _mx, _my) {
 	var _x = _g.screenW - PANEL_W;
+	var _listTop = get_build_list_top();
 	draw_set_colour(make_colour_rgb(18, 24, 38));
 	draw_set_alpha(0.9);
 	draw_rectangle(_x, TOP_H, _g.screenW, _g.screenH, false);
@@ -681,33 +888,197 @@ function draw_side_panel(_g) {
 	draw_line(_x, TOP_H, _x, _g.screenH);
 	draw_set_halign(fa_left);
 	draw_set_valign(fa_top);
+	draw_text(_x + 12, TOP_H + 12, "Buildings");
 
-	var _titles = ["", "Buildings", "Research", "Diplomacy", "Ideology"];
-	draw_text(_x + 12, TOP_H + 12, _titles[_g.panel]);
-
-	if (_local == NO_ID) {
-		return;
+	// The list is clipped so scrolled buttons cannot draw over the title
+	gpu_set_scissor(_x, _listTop, PANEL_W, _g.screenH - _listTop);
+	for (var _i = 0; _i < array_length(_buttons); _i++) {
+		if (_buttons[_i].zone == 1) {
+			draw_hud_button(_buttons[_i], _mx, _my);
+		}
 	}
+	gpu_set_scissor(0, 0, _g.screenW, _g.screenH);
 
-	if (_g.panel == PANEL.DIPLOMACY) {
+	// Scrollbar
+	var _scrollMax = get_build_scroll_max(_g);
+	if (_scrollMax > 0) {
+		var _trackH = _g.screenH - _listTop - 8;
+		var _thumbH = max(24, _trackH * _trackH / (_trackH + _scrollMax));
+		var _thumbY = _listTop + (_trackH - _thumbH) * (_g.panelScroll / _scrollMax);
+		draw_set_colour(make_colour_rgb(50, 55, 70));
+		draw_rectangle(_g.screenW - 6, _listTop, _g.screenW - 2, _listTop + _trackH, false);
 		draw_set_colour(c_ltgray);
-		draw_text_ext(_x + 12, _g.screenH - 120, "Build an Embassy, select it and pick a nation to send an envoy to their capital. Declaring war cannot be refused, and the treaty ends 2 minutes later.", 16, PANEL_W - 24);
-		draw_set_colour(c_white);
+		draw_rectangle(_g.screenW - 6, _thumbY, _g.screenW - 2, _thumbY + _thumbH, false);
+	}
+	draw_set_colour(c_white);
+}
+
+// ------------------------------------------------------------
+// Overlay screens
+// ------------------------------------------------------------
+
+function draw_overlay(_g, _buttons, _mx, _my) {
+	var _o = get_overlay_rect(_g);
+	var _local = _g.localNation;
+
+	// Dim everything under the top bar
+	draw_set_colour(c_black);
+	draw_set_alpha(0.6);
+	draw_rectangle(0, TOP_H, _g.screenW, _g.screenH, false);
+	draw_set_alpha(1);
+	draw_set_colour(make_colour_rgb(18, 24, 38));
+	draw_rectangle(_o.x, _o.y, _o.x + _o.w, _o.y + _o.h, false);
+	draw_set_colour(c_white);
+	draw_rectangle(_o.x, _o.y, _o.x + _o.w, _o.y + _o.h, true);
+	draw_set_halign(fa_left);
+	draw_set_valign(fa_top);
+
+	var _titles = ["", "", "Research Tree", "Diplomacy", "Ideology"];
+	draw_text_transformed(_o.x + 20, _o.y + 12, _titles[_g.panel], 1.4, 1.4, 0);
+
+	if (_local != NO_ID) {
+		if (_g.panel == PANEL.RESEARCH) {
+			draw_research_tree(_g, _o);
+		} else if (_g.panel == PANEL.DIPLOMACY) {
+			draw_set_colour(c_ltgray);
+			draw_text_ext(_o.x + 20, _o.y + _o.h - 56, "Build an Embassy, select it and pick a nation to send an envoy to their capital. Declaring war cannot be refused, and the treaty ends 2 minutes later.", 16, _o.w - 40);
+			draw_set_colour(c_white);
+		} else if (_g.panel == PANEL.IDEOLOGY) {
+			draw_ideology_panel(_g, _o);
+		}
 	}
 
-	if (_g.panel == PANEL.IDEOLOGY) {
-		draw_ideology_panel(_g, _x);
+	for (var _i = 0; _i < array_length(_buttons); _i++) {
+		var _b = _buttons[_i];
+		if (_b.zone != 4) {
+			continue;
+		}
+		if (_b.branch != NO_ID) {
+			draw_research_node(_b, _mx, _my);
+		} else {
+			draw_hud_button(_b, _mx, _my);
+		}
 	}
 }
 
-// Radar chart of where the local nation stands on the five ideologies
-function draw_ideology_panel(_g, _x) {
+// Draws an elbow link: down from the first point, across, and down to the second
+function draw_tree_link(_x1, _y1, _x2, _y2, _col, _width) {
+	var _midY = (_y1 + _y2) / 2;
+	draw_set_colour(_col);
+	draw_line_width(_x1, _y1, _x1, _midY, _width);
+	draw_line_width(_x1, _midY, _x2, _midY, _width);
+	draw_line_width(_x2, _midY, _x2, _y2, _width);
+}
+
+function draw_research_tree(_g, _o) {
+	var _local = _g.localNation;
+	var _state = _g.world.nationStates[_local];
+	var _dim = make_colour_rgb(70, 75, 90);
+
+	draw_set_halign(fa_left);
+	draw_set_valign(fa_top);
+	draw_set_colour(c_aqua);
+	draw_text(_o.x + 20, _o.y + 44, "Research points: " + string(floor(_state.rp)) + "  (+" + string_format(get_rp_rate(_g.world, _local), 1, 1) + "/s)");
+
+	// The City Hall is the root and is always researched
+	var _rootW = 150;
+	var _rootH = 44;
+	var _rootX = _o.x + _o.w / 2;
+	var _rootY = _o.y + 56;
+	var _gold = make_colour_rgb(255, 210, 60);
+	var _headerY = _o.y + 120;
+
+	for (var _br = 0; _br < 3; _br++) {
+		var _cx = _o.x + (_o.w / 3) * (_br + 0.5);
+		var _bc = get_branch_colour(_br);
+
+		// Root to branch header
+		draw_tree_link(_rootX, _rootY + _rootH, _cx, _headerY, _bc, 3);
+
+		draw_set_colour(merge_colour(_bc, c_black, 0.45));
+		draw_rectangle(_cx - RESEARCH_NODE_W - 6, _headerY, _cx + RESEARCH_NODE_W + 6, _headerY + 28, false);
+		draw_set_colour(_bc);
+		draw_rectangle(_cx - RESEARCH_NODE_W - 6, _headerY, _cx + RESEARCH_NODE_W + 6, _headerY + 28, true);
+		draw_set_halign(fa_center);
+		draw_set_valign(fa_middle);
+		draw_set_colour(c_white);
+		draw_text(_cx, _headerY + 14, get_branch_name(_br));
+	}
+
+	// Links: nodes without a prerequisite hang off their branch header
+	for (var _r = 0; _r < RESEARCH.COUNT; _r++) {
+		var _def = global.researchDefs[_r];
+		var _rect = get_research_node_rect(_g, _r);
+		var _bcol = get_branch_colour(_def.branch);
+		var _nodeX = _rect.x + _rect.w / 2;
+		if (_def.prereq == NO_ID) {
+			var _hx = _o.x + (_o.w / 3) * (_def.branch + 0.5);
+			draw_tree_link(_hx, _headerY + 28, _nodeX, _rect.y, _bcol, 2);
+		} else {
+			var _pr = get_research_node_rect(_g, _def.prereq);
+			var _linkCol = _state.researched[_def.prereq] ? _bcol : _dim;
+			draw_tree_link(_pr.x + _pr.w / 2, _pr.y + _pr.h, _nodeX, _rect.y, _linkCol, 2);
+		}
+	}
+
+	// Root node on top of the links
+	draw_set_colour(merge_colour(_gold, c_black, 0.6));
+	draw_rectangle(_rootX - _rootW / 2, _rootY, _rootX + _rootW / 2, _rootY + _rootH, false);
+	draw_set_colour(_gold);
+	draw_rectangle(_rootX - _rootW / 2, _rootY, _rootX + _rootW / 2, _rootY + _rootH, true);
+	draw_set_halign(fa_center);
+	draw_set_valign(fa_middle);
+	draw_set_colour(c_white);
+	draw_text(_rootX, _rootY + 14, "City Hall");
+	draw_set_colour(_gold);
+	draw_text(_rootX, _rootY + 32, "Researched");
+	draw_set_halign(fa_left);
+	draw_set_valign(fa_top);
+}
+
+function draw_research_node(_b, _mx, _my) {
+	var _hover = point_in_button(_b, _mx, _my);
+	var _bc = get_branch_colour(_b.branch);
+	var _fill = make_colour_rgb(28, 32, 46);
+	var _border = _bc;
+	var _textCol = c_white;
+	var _subCol = c_aqua;
+	if (_b.state == 2) {
+		_fill = merge_colour(_bc, c_black, 0.4);
+		_subCol = c_white;
+	} else if (_b.state == 0) {
+		_fill = make_colour_rgb(26, 26, 32);
+		_border = make_colour_rgb(80, 80, 90);
+		_textCol = c_gray;
+		_subCol = c_gray;
+	} else if (!_b.enabled) {
+		// Prerequisite done, but not enough research points yet
+		_subCol = make_colour_rgb(255, 130, 120);
+	} else if (_hover) {
+		_fill = merge_colour(_bc, c_black, 0.65);
+	}
+	draw_set_colour(_fill);
+	draw_rectangle(_b.x, _b.y, _b.x + _b.w, _b.y + _b.h, false);
+	draw_set_colour(_border);
+	draw_rectangle(_b.x, _b.y, _b.x + _b.w, _b.y + _b.h, true);
+	draw_rectangle(_b.x + 1, _b.y + 1, _b.x + _b.w - 1, _b.y + _b.h - 1, true);
+	draw_set_halign(fa_left);
+	draw_set_valign(fa_top);
+	draw_set_colour(_textCol);
+	draw_text_ext(_b.x + 6, _b.y + 4, _b.label, 16, _b.w - 12);
+	draw_set_colour(_subCol);
+	draw_text(_b.x + 6, _b.y + _b.h - 20, _b.sub);
+}
+
+function draw_ideology_panel(_g, _o) {
 	var _world = _g.world;
 	var _local = _g.localNation;
 	var _scores = get_ideology_scores(_world, _local);
-	var _cx = _x + PANEL_W / 2;
-	var _cy = TOP_H + 200;
-	var _radius = 90;
+	var _radius = min(110, (_o.h - 150) / 2);
+	var _cx = _o.x + 250;
+	var _cy = _o.y + 70 + _radius + 24;
+	var _x = _o.x + _o.w * 0.55;
+	var _barW = _o.x + _o.w - 30 - (_x + 110);
 
 	// Grid
 	for (var _ring = 1; _ring <= 4; _ring++) {
@@ -740,18 +1111,18 @@ function draw_ideology_panel(_g, _x) {
 	// Bars with what each score means
 	draw_set_halign(fa_left);
 	draw_set_valign(fa_top);
-	var _by = _cy + _radius + 44;
+	var _by = _o.y + 80;
 	for (var _k = 0; _k < IDEO.COUNT; _k++) {
 		draw_set_colour(global.ideologyColours[_k]);
-		draw_text(_x + 12, _by, global.ideologyNames[_k]);
+		draw_text(_x, _by, global.ideologyNames[_k]);
 		draw_set_colour(make_colour_rgb(50, 55, 70));
-		draw_rectangle(_x + 110, _by + 3, _x + PANEL_W - 14, _by + 13, false);
+		draw_rectangle(_x + 110, _by + 3, _x + 110 + _barW, _by + 13, false);
 		draw_set_colour(global.ideologyColours[_k]);
-		draw_rectangle(_x + 110, _by + 3, _x + 110 + (PANEL_W - 124) * _scores[_k], _by + 13, false);
-		_by += 22;
+		draw_rectangle(_x + 110, _by + 3, _x + 110 + _barW * _scores[_k], _by + 13, false);
+		_by += 26;
 	}
 	draw_set_colour(c_ltgray);
-	draw_text_ext(_x + 12, _by + 6, "Bots that are far ahead of you in land, gold and power only sign peace if your stance fits their ideology. Real players ignore this.", 16, PANEL_W - 24);
+	draw_text_ext(_x, _by + 12, "Bots that are far ahead of you in land, gold and power only sign peace if your stance fits their ideology. Real players ignore this.", 16, _o.x + _o.w - 30 - _x);
 	draw_set_colour(c_white);
 }
 

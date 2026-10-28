@@ -67,6 +67,12 @@ function create_world(_settings) {
 		// edgeGridY holds the edge between (x, y) and (x, y + 1).
 		edgeGridX: ds_grid_create(_w, _h),
 		edgeGridY: ds_grid_create(_w, _h),
+		pathGrid: ds_grid_create(_w, _h),
+		pathLinks: [],
+		battles: [],
+		combatTime: array_create(MAX_NATIONS, -9999),
+		audioEvents: [],
+		pathTotal: 0,
 		// Scratch grids for the pathfinder
 		pfCost: ds_grid_create(_w, _h),
 		pfParent: ds_grid_create(_w, _h),
@@ -93,12 +99,16 @@ function create_world(_settings) {
 	ds_grid_clear(_world.buildingGrid, NO_ID);
 	ds_grid_clear(_world.edgeGridX, NO_ID);
 	ds_grid_clear(_world.edgeGridY, NO_ID);
+	ds_grid_clear(_world.pathGrid, NO_ID);
 
 	generate_terrain(_world);
 	place_habitable_tiles(_world, _settings.nationCount + 6);
 	generate_resources(_world);
 	setup_nations(_world);
-	place_tribe_camps(_world);
+	// Bandit camps can be switched off from the Play screen (the menu demo has no setting, so it keeps them)
+	if (!variable_struct_exists(_settings, "bandits") || _settings.bandits) {
+		place_tribe_camps(_world);
+	}
 	recalculate_borders(_world);
 	update_nation_stats(_world);
 	return _world;
@@ -118,6 +128,7 @@ function destroy_world(_world) {
 	ds_grid_destroy(_world.pfCost);
 	ds_grid_destroy(_world.pfParent);
 	ds_grid_destroy(_world.pfClosed);
+	ds_grid_destroy(_world.pathGrid);
 }
 
 function generate_terrain(_world) {
@@ -182,6 +193,9 @@ function generate_resources(_world) {
 				ds_grid_set(_world.resource, _gx, _gy, RES.STONE);
 			} else if (_r > 1 - _oreChance) {
 				ds_grid_set(_world.resource, _gx, _gy, RES.ORE);
+			} else if ((ds_grid_get(_world.biome, _gx, _gy) == BIOME.FOREST) && (hash_2d(_gx, _gy, _world.seed + 202) < 0.12)) {
+				// Trees only grow in forests, and only on some of the tiles
+				ds_grid_set(_world.resource, _gx, _gy, RES.TREES);
 			}
 		}
 	}

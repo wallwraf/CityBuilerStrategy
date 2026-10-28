@@ -12,6 +12,10 @@
 //   Escape              cancel placing a building
 // ============================================================
 
+// How many tiles of dark ocean are drawn past the map edge, and how far past the edge the camera centre may go
+#macro DEEP_MARGIN 64
+#macro CAMERA_SLACK 4
+
 function camera_init(_g) {
 	_g.screenW = window_get_width();
 	_g.screenH = window_get_height();
@@ -26,6 +30,23 @@ function camera_init(_g) {
 	_g.cam = camera_create_view(0, 0, _g.screenW, _g.screenH);
 	view_camera[0] = _g.cam;
 	camera_update_size(_g, true);
+}
+
+// Keeps the centre of the screen near the map so the player cannot wander off into nothing
+function camera_clamp_to_map(_g) {
+	if (_g.world == undefined) {
+		return;
+	}
+	var _cx = _g.camX + _g.screenW / 2 / _g.zoom;
+	var _cy = _g.camY + _g.screenH / 2 / _g.zoom;
+	var _gx = world_to_tile_gx(_cx, _cy);
+	var _gy = world_to_tile_gy(_cx, _cy);
+	var _limitGx = clamp(_gx, -CAMERA_SLACK, _g.world.mapW - 1 + CAMERA_SLACK);
+	var _limitGy = clamp(_gy, -CAMERA_SLACK, _g.world.mapH - 1 + CAMERA_SLACK);
+	if ((_limitGx != _gx) || (_limitGy != _gy)) {
+		_g.camX = tile_to_world_x(_limitGx, _limitGy) - _g.screenW / 2 / _g.zoom;
+		_g.camY = tile_to_world_y(_limitGx, _limitGy) - _g.screenH / 2 / _g.zoom;
+	}
 }
 
 // Keeps the view matched to the window size (so 1 world pixel = 1 screen pixel at zoom 1)
@@ -75,7 +96,8 @@ function id_in_list(_list, _id) {
 function prune_selection(_g) {
 	var _kept = [];
 	for (var _i = 0; _i < array_length(_g.selectedUnitIds); _i++) {
-		if (_g.world.units[_g.selectedUnitIds[_i]].alive) {
+		var _selected = _g.world.units[_g.selectedUnitIds[_i]];
+		if (_selected.alive && !unit_is_aboard(_selected)) {
 			array_push(_kept, _g.selectedUnitIds[_i]);
 		}
 	}
@@ -90,15 +112,22 @@ function update_input(_g) {
 	var _wy = _g.camY + _my / _g.zoom;
 
 	// Zoom toward the cursor (not while the cursor is over the HUD)
+	// The wheel scrolls the build menu while it is hovered, otherwise it zooms toward the cursor
 	var _wheel = mouse_wheel_up() - mouse_wheel_down();
-	if (global.options.invertZoom == 1) {
-		_wheel = -_wheel;
-	}
-	var _zoomStep = 1 + 0.03 * global.options.zoomSpeed;
-	if ((_wheel != 0) && !hud_captures_mouse(_g, _mx, _my)) {
-		_g.zoom = clamp(_g.zoom * power(_zoomStep, _wheel), MIN_ZOOM, MAX_ZOOM);
-		_g.camX = _wx - _mx / _g.zoom;
-		_g.camY = _wy - _my / _g.zoom;
+	if (_wheel != 0) {
+		if (mouse_over_build_panel(_g, _mx, _my)) {
+			_g.panelScroll = clamp(_g.panelScroll - _wheel * 60, 0, get_build_scroll_max(_g));
+		} else if (!hud_captures_mouse(_g, _mx, _my)) {
+			if (global.options.invertZoom == 1) {
+				_wheel = -_wheel;
+			}
+			var _zoomStep = 1 + 0.03 * global.options.zoomSpeed;
+			if ((_wheel != 0) && !hud_captures_mouse(_g, _mx, _my)) {
+				_g.zoom = clamp(_g.zoom * power(_zoomStep, _wheel), MIN_ZOOM, MAX_ZOOM);
+				_g.camX = _wx - _mx / _g.zoom;
+				_g.camY = _wy - _my / _g.zoom;
+			}
+		}
 	}
 
 	// Pan: keep the point that was under the cursor when the drag started under the cursor
@@ -131,6 +160,7 @@ function update_input(_g) {
 			_g.camY += _scroll;
 		}
 	}
+	camera_clamp_to_map(_g);
 	camera_refresh_view(_g);
 
 	// Mouse position in the world after the camera moved
@@ -147,17 +177,51 @@ function update_input(_g) {
 	}
 
 	prune_selection(_g);
+	if (_g.gameState == GAME_STATE.PLAYING) {
+		sfx_hud_hover(_g);
+	}
 	update_placement_preview(_g);
 
-	// Escape cancels placing a building
-	if (keyboard_check_pressed(vk_escape)) {
-		_g.placeType = NO_ID;
+	// E loads / unloads the selected Traveler Boats
+	if (keyboard_check_pressed(ord("E"))) {
+		var _cargoCmd = make_command(CMD.TOGGLE_CARGO, _g.localNation);
+		for (var _s = 0; _s < array_length(_g.selectedUnitIds); _s++) {
+			var _sel = _g.world.units[_g.selectedUnitIds[_s]];
+			if (global.unitStats[_sel.type].capacity > 0) {
+				array_push(_cargoCmd.unitIds, _sel.unitId);
+			}
+		}
+		if (array_length(_cargoCmd.unitIds) > 0) {
+			run_player_command(_g, _cargoCmd);
+		}
+	}
+	
+	// Delete demolishes the selected building
+	if (keyboard_check_pressed(vk_delete) && (_g.selectedBuildingId != NO_ID)) {
+		var _demolishCmd = make_command(CMD.DEMOLISH, _g.localNation);
+		_demolishCmd.buildingId = _g.selectedBuildingId;
+		if (run_player_command(_g, _demolishCmd) == "") {
+			_g.selectedBuildingId = NO_ID;
+		}
 	}
 
-	// Right click: cancel placing, otherwise deselect all
-	if (mouse_check_button_pressed(mb_right)) {
-		if (_g.placeType != NO_ID) {
+	// Escape closes an overlay first, otherwise cancels placing or demolishing
+	if (keyboard_check_pressed(vk_escape)) {
+		if (panel_is_overlay(_g.panel)) {
+			_g.panel = PANEL.NONE;
+		} else {
 			_g.placeType = NO_ID;
+			_g.demolishMode = false;
+		}
+	}
+
+	// Right click: close an overlay, cancel placing or demolishing, otherwise deselect all
+	if (mouse_check_button_pressed(mb_right)) {
+		if (panel_is_overlay(_g.panel)) {
+			_g.panel = PANEL.NONE;
+		} else if ((_g.placeType != NO_ID) || _g.demolishMode) {
+			_g.placeType = NO_ID;
+			_g.demolishMode = false;
 		} else {
 			clear_selection(_g);
 		}
@@ -172,6 +236,10 @@ function update_input(_g) {
 			execute_hud_button(_g, _button);
 		} else if (hud_captures_mouse(_g, _mx, _my)) {
 			_g.uiCapture = true;
+			// Clicking the dimmed area outside an overlay closes it
+			if (panel_is_overlay(_g.panel) && (_my >= TOP_H) && !point_in_overlay(_g, _mx, _my)) {
+				_g.panel = PANEL.NONE;
+			}
 		} else {
 			_g.uiCapture = false;
 			_g.dragging = true;
@@ -181,13 +249,34 @@ function update_input(_g) {
 			_g.dragStartMy = _my;
 		}
 	}
+	
+	// Holding the mouse while placing paths paints them
+	if (_g.dragging && (_g.placeType != NO_ID) && (global.buildingDefs[_g.placeType].place == PLACE.PATH) && mouse_check_button(mb_left)) {
+		if ((_g.hoverGx != _g.paintGx) || (_g.hoverGy != _g.paintGy)) {
+			_g.paintGx = _g.hoverGx;
+			_g.paintGy = _g.hoverGy;
+			var _paint = make_command(CMD.BUILD, _g.localNation);
+			_paint.buildingType = _g.placeType;
+			_paint.gx = _g.hoverGx;
+			_paint.gy = _g.hoverGy;
+			if (apply_command(_g.world, _paint) == "") {
+				_g.painted = true;
+			}
+		}
+	}
 
 	// Left release: click or box select
 	if (mouse_check_button_released(mb_left) && _g.dragging) {
 		_g.dragging = false;
+		var _wasPainted = _g.painted;
+		_g.painted = false;
+		_g.paintGx = -1;
+		_g.paintGy = -1;
 		var _movedPx = point_distance(_g.dragStartMx, _g.dragStartMy, _mx, _my);
 		if ((_movedPx < DRAG_THRESHOLD) || (_g.placeType != NO_ID)) {
-			handle_world_click(_g, _g.hoverGx, _g.hoverGy);
+			if (!_wasPainted) {
+				handle_world_click(_g, _g.hoverGx, _g.hoverGy);
+			}
 		} else {
 			box_select_units(_g, _g.dragStartX, _g.dragStartY, _wx, _wy);
 		}
@@ -228,7 +317,7 @@ function box_select_units(_g, _x1, _y1, _x2, _y2) {
 	var _picked = [];
 	for (var _i = 0; _i < array_length(_world.units); _i++) {
 		var _u = _world.units[_i];
-		if (!_u.alive || (_u.owner != _g.localNation)) {
+		if (!_u.alive || unit_is_aboard(_u) || (_u.owner != _g.localNation)) {
 			continue;
 		}
 		var _ux = tile_to_world_x(_u.visGx, _u.visGy);
@@ -264,15 +353,50 @@ function handle_world_click(_g, _gx, _gy) {
 		_build.gx = _g.placeGx;
 		_build.gy = _g.placeGy;
 		_build.axis = _g.placeAxis;
-		if ((run_player_command(_g, _build) == "") && !keyboard_check(vk_shift)) {
+		if ((run_player_command(_g, _build) == "") && !keyboard_check(vk_shift) && (global.buildingDefs[_g.placeType].place != PLACE.PATH)) {
 			_g.placeType = NO_ID;
 		}
 		return;
 	}
 
-	if (!tile_in_bounds(_world, _gx, _gy)) {
+	if (!tile_in_bounds(_world, _gx, _gy)) { return; }
+	
+	// Demolish tool: a wall or gate on the nearest edge, then a building, then a path
+	if (_g.demolishMode) {
+		var _demoCmd = make_command(CMD.DEMOLISH, _local);
+		var _demoEdge = find_nearest_edge(_g.mouseWx, _g.mouseWy);
+		var _demoEdgeB = (_demoEdge.dist < 0.16) ? get_edge_building_at(_world, _demoEdge.ex, _demoEdge.ey, _demoEdge.axis) : undefined;
+		var _demoTileB = get_tile_building(_world, _gx, _gy);
+		if ((_demoEdgeB != undefined) && (_demoEdgeB.owner == _local)) {
+			_demoCmd.buildingId = _demoEdgeB.buildingId;
+		} else if ((_demoTileB != undefined) && (_demoTileB.owner == _local)) {
+			_demoCmd.buildingId = _demoTileB.buildingId;
+		} else {
+			_demoCmd.gx = _gx;
+			_demoCmd.gy = _gy;
+		}
+		var _demoRefundId = _demoCmd.buildingId;
+		var _demoRefund = (_demoRefundId != NO_ID) ? get_demolish_refund(_world.buildings[_demoRefundId].type) : get_demolish_refund(BUILDING.PATH);
+		if (run_player_command(_g, _demoCmd) == "") {
+			set_toast(_g, "Demolished. Refunded " + string(_demoRefund) + " gold");
+			_g.selectedBuildingId = NO_ID;
+		}
 		return;
 	}
+
+	// The middle of a dotted link between two path networks: click it to pay for the path
+	if (get_unit_at(_world, _gx, _gy) == undefined) {
+		var _link = find_path_link_at(_world, _local, _gx, _gy);
+		if (_link != undefined) {
+			var _linkCmd = make_command(CMD.CONNECT_PATH, _local);
+			_linkCmd.gx = _link.ax;
+			_linkCmd.gy = _link.ay;
+			_linkCmd.targetId = _link.by * _world.mapW + _link.bx;
+			run_player_command(_g, _linkCmd);
+			return;
+		}
+	}
+	
 	var _unit = get_unit_at(_world, _gx, _gy);
 	var _cityId = ds_grid_get(_world.cityGrid, _gx, _gy);
 	var _tileBuilding = get_tile_building(_world, _gx, _gy);

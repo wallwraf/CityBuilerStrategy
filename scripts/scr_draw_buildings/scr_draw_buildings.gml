@@ -274,6 +274,11 @@ function draw_placement_ghost(_g) {
 	var _def = global.buildingDefs[_g.placeType];
 	var _ok = (_g.placeMsg == "");
 	var _tint = _ok ? c_lime : c_red;
+	// A path is only a patch of ground
+	if (_def.place == PLACE.PATH) {
+		draw_diamond(tile_to_world_x(_g.placeGx, _g.placeGy), tile_to_world_y(_g.placeGx, _g.placeGy), TILE_W * 0.3, TILE_H * 0.3, _tint, 0.7);
+		return;
+	}
 	var _ghost = {
 		type: _g.placeType, gx: _g.placeGx, gy: _g.placeGy, axis: _g.placeAxis, isEdge: (_def.place == PLACE.EDGE),
 		level: 1, owner: _g.localNation, hp: 1, maxHp: 1
@@ -300,5 +305,16 @@ function draw_resource_marker(_cx, _cy, _resource) {
 	} else if (_resource == RES.ORE) {
 		draw_diamond(_cx - 3, _cy, 3, 2.5, make_colour_rgb(170, 90, 220), 1);
 		draw_diamond(_cx + 3, _cy + 1, 3, 2.5, make_colour_rgb(255, 205, 70), 1);
+	} else if (_resource == RES.TREES) {
+		// Two little pine trees
+		draw_set_colour(make_colour_rgb(90, 60, 35));
+		draw_rectangle(_cx - 5, _cy - 1, _cx - 3, _cy + 3, false);
+		draw_rectangle(_cx + 3, _cy, _cx + 5, _cy + 4, false);
+		draw_set_colour(make_colour_rgb(24, 96, 44));
+		draw_triangle(_cx - 4, _cy - 9, _cx - 9, _cy, _cx + 1, _cy, false);
+		draw_triangle(_cx + 4, _cy - 8, _cx - 1, _cy + 1, _cx + 9, _cy + 1, false);
+		draw_set_colour(make_colour_rgb(12, 52, 24));
+		draw_triangle(_cx - 4, _cy - 9, _cx - 9, _cy, _cx - 4, _cy, false);
+		draw_triangle(_cx + 4, _cy - 8, _cx - 1, _cy + 1, _cx + 4, _cy + 1, false);
 	}
 }

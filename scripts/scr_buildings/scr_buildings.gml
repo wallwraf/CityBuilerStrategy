@@ -44,6 +44,7 @@ function create_building(_world, _owner, _type, _gx, _gy, _axis) {
 	} else {
 		ds_grid_set(_world.buildingGrid, _gx, _gy, _b.buildingId);
 	}
+	audio_event(_world, "build", _type, _gx, _gy, _owner);
 	return _b;
 }
 
@@ -174,7 +175,9 @@ function unit_terrain_ok(_world, _unit, _gx, _gy) {
 	if (global.unitStats[_unit.type].domain == DOMAIN.WATER) {
 		return tile_is_water(_world, _gx, _gy);
 	}
-	return tile_is_walkable(_world, _gx, _gy);
+	// Land units also need the tile to be able to hold their weight
+	return tile_is_walkable(_world, _gx, _gy)
+		&& (global.unitStats[_unit.type].weight <= get_tile_weight_limit(_world, _gx, _gy));
 }
 
 // Can a unit make a single step from one tile to a neighbouring tile.
@@ -267,6 +270,23 @@ function can_place_building(_world, _owner, _type, _gx, _gy, _axis) {
 		}
 		return "";
 	}
+	
+	// Paths sit under everything, so only the border, the land and other paths matter
+	if (_def.place == PLACE.PATH) {
+		if (!tile_in_bounds(_world, _gx, _gy)) {
+			return "Out of bounds";
+		}
+		if (ds_grid_get(_world.borderOwner, _gx, _gy) != _owner) {
+			return "Must be inside your borders";
+		}
+		if (!tile_is_walkable(_world, _gx, _gy)) {
+			return "Land only";
+		}
+		if (ds_grid_get(_world.pathGrid, _gx, _gy) != NO_ID) {
+			return "There is already a path here";
+		}
+		return "";
+	}
 
 	if (!tile_in_bounds(_world, _gx, _gy)) {
 		return "Out of bounds";
@@ -303,11 +323,8 @@ function can_place_building(_world, _owner, _type, _gx, _gy, _axis) {
 			return "";
 
 		case PLACE.FOREST:
-			if (!tile_is_walkable(_world, _gx, _gy) || (ds_grid_get(_world.biome, _gx, _gy) != BIOME.FOREST)) {
-				return "Forest tiles only";
-			}
-			if ((_res != RES.NONE) || _habitable) {
-				return "This tile is reserved";
+			if (!tile_is_walkable(_world, _gx, _gy) || (_res != RES.TREES)) {
+				return "Tree tiles only";
 			}
 			return "";
 

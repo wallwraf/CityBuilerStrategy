@@ -73,6 +73,19 @@ function draw_unit(_unit, _selected) {
 	}
 	draw_set_alpha(1);
 
+	// Passenger count badge on boats that carry units
+	if (array_length(_unit.cargo) > 0) {
+		draw_set_colour(c_black);
+		draw_circle(12, _by - 22, 7, false);
+		draw_set_colour(c_white);
+		draw_circle(12, _by - 22, 7, true);
+		draw_set_halign(fa_center);
+		draw_set_valign(fa_middle);
+		draw_text_transformed(12, _by - 22, string(array_length(_unit.cargo)), 0.6, 0.6, 0);
+		draw_set_halign(fa_left);
+		draw_set_valign(fa_top);
+	}
+
 	// Health bar when hurt
 	if (_unit.hp < _stats.maxHp) {
 		var _frac = _unit.hp / _stats.maxHp;
@@ -322,6 +335,16 @@ function draw_boat_unit(_type, _col, _tc) {
 			draw_set_colour(c_lime);
 			draw_ellipse(-7, -23, 7, -16, true);
 			draw_line(0, -20, 0, -26);
+			break;
+
+		case UNIT_TYPE.TRAVELER_BOAT:
+			// Wide open hull with a mast and a sail
+			draw_set_colour(c_white);
+			draw_line_width(0, -9, 0, -26, 2);
+			draw_set_colour(make_colour_rgb(240, 230, 200));
+			draw_triangle(0, -26, 0, -12, 11, -13, false);
+			draw_set_colour(_col);
+			draw_triangle(0, -26, 0, -22, -6, -24, false);
 			break;
 
 		case UNIT_TYPE.BATTLESHIP:

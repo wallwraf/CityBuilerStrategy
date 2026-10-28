@@ -191,6 +191,16 @@ function menu_get_items(_g) {
 			_map.act = MENU_ACT.MAP_TYPE;
 			_map.value = global.mapPresets[_g.settings.mapPreset].presetName;
 			array_push(_items, _map);
+
+			// Map size: 32 x 32 up to 128 x 128, in steps of 8
+			var _size = menu_option_slider("Map Size", "mapSize", 32, 128, 8, OPT_APPLY.NONE);
+			_size.value = string(_size.number) + " x " + string(_size.number);
+			array_push(_items, _size);
+
+			// Enemy factions. You always take one nation slot, so the bots can fill the other 7.
+			array_push(_items, menu_option_toggle("Bandits", "bandits", OPT_APPLY.NONE));
+			array_push(_items, menu_option_slider("Bot Factions", "botFactions", 1, MAX_NATIONS - 1, 1, OPT_APPLY.NONE));
+
 			array_push(_items, menu_button("Start Game", MENU_ACT.START, 0));
 			array_push(_items, menu_button("Back", MENU_ACT.BACK, 0));
 			break;
@@ -251,9 +261,8 @@ function menu_get_items(_g) {
 
 		case MENU_PAGE.CREDITS:
 			array_push(_items, menu_text("Design and direction: wallwraf"));
-			array_push(_items, menu_text("Code assisted by Claude"));
 			array_push(_items, menu_text("Made in GameMaker Studio 2"));
-			array_push(_items, menu_text("Inspired by Sid Meier's"));
+			array_push(_items, menu_text("Inspired by Sid Meier's Civilization series"));
 			array_push(_items, menu_button("Back", MENU_ACT.BACK, 0));
 			break;
 	}
@@ -335,6 +344,7 @@ function menu_go_back(_g) {
 	if (array_length(_g.menuStack) == 0) {
 		return;
 	}
+	sfx_play("ui_back");
 	save_options();
 	var _previous = array_pop(_g.menuStack);
 	_g.menuPage = _previous.page;
@@ -362,6 +372,7 @@ function menu_slider_bar(_item) {
 
 // _dir is 1 for next, -1 for previous
 function menu_adjust(_g, _item, _dir) {
+	sfx_play("ui_tick");
 	if (_item.act == MENU_ACT.MAP_TYPE) {
 		var _presets = array_length(global.mapPresets);
 		_g.settings.mapPreset = (_g.settings.mapPreset + _dir + _presets) mod _presets;
@@ -396,6 +407,7 @@ function menu_set_slider_from_mouse(_item, _mx) {
 }
 
 function menu_activate(_g, _item) {
+	sfx_play("ui_click");
 	switch (_item.act) {
 		case MENU_ACT.OPEN_PAGE:
 			menu_open_page(_g, _item.arg);
@@ -547,6 +559,14 @@ function menu_update_anim(_g, _count, _dt) {
 function menu_start_game(_g) {
 	save_options();
 	_g.settings.seed = (_g.menuSeed == 0) ? irandom_range(1, 999999) : _g.menuSeed;
+	// Setup from the Play screen
+	var _o = global.options;
+	_g.settings.mapWidth = _o.mapSize;
+	_g.settings.mapHeight = _o.mapSize;
+	_g.settings.botCount = clamp(_o.botFactions, 1, MAX_NATIONS - 1);
+	_g.settings.nationCount = _g.settings.botCount + 1;
+	_g.settings.vacantCount = 0;
+	_g.settings.bandits = (_o.bandits == 1);
 	if (_g.world != undefined) {
 		destroy_world(_g.world);
 	}
@@ -557,6 +577,7 @@ function menu_start_game(_g) {
 	clear_selection(_g);
 	_g.panel = PANEL.NONE;
 	_g.placeType = NO_ID;
+	_g.demolishMode = false;
 	_g.dragging = false;
 	_g.menuExitTimer = 0;
 	if (_g.localNation != NO_ID) {

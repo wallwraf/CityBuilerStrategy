@@ -5,3 +5,4 @@ if (world != undefined) {
 	destroy_world(world);
 }
 camera_destroy(cam);
+audio_cleanup();
