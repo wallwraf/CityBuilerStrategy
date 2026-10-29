@@ -22,7 +22,7 @@
 #macro MAX_ZOOM 4
 
 // Misc
-#macro START_GOLD 150000
+#macro START_GOLD 150
 #macro DRAG_THRESHOLD 6
 #macro ELEVATION_MOUNTAIN 8
 
@@ -41,7 +41,7 @@
 #macro BOT_FAVOUR_MAX 60
 
 // Research
-#macro BASE_RP_RATE 1000.5
+#macro BASE_RP_RATE 0.5
 
 // UI
 #macro BUTTON_W 158
