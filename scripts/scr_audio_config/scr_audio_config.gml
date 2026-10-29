@@ -110,6 +110,9 @@ function init_audio() {
 	// have one sound, use the same asset name for both.
 	sfx_define_loop("battle_near", "snd_battle_loop", 0.9);
 	sfx_define_loop("battle_far", "snd_battle_loop_muffled", 0.9);
+	// Battle Outcomes (win/loss)
+	sfx_define("victory", ["snd_victory"], 1.0, 1, 1, 0);
+	sfx_define("defeat", ["snd_defeat"], 1.0, 1, 1, 0);
 
 	// ---------- Music ----------
 	// music_define(key, asset name, volume 0-1)

@@ -148,25 +148,60 @@ function sfx_play(_key) {
 	return sfx_play_scaled(_key, 1);
 }
 
+
 function sfx_play_scaled(_key, _scale) {
-	if (!variable_struct_exists(global.sfxDefs, _key)) {
-		return -1;
-	}
-	var _def = variable_struct_get(global.sfxDefs, _key);
-	var _last = variable_struct_exists(global.sfx.lastPlayed, _key) ? variable_struct_get(global.sfx.lastPlayed, _key) : -999999;
-	if ((current_time - _last) < _def.cooldown) {
-		return -1;
-	}
-	var _asset = sfx_pick_asset(_key, _def);
-	if (_asset == -1) {
-		return -1;
-	}
-	variable_struct_set(global.sfx.lastPlayed, _key, current_time);
-	var _handle = audio_play_sound(_asset, _def.priority, false);
-	audio_sound_gain(_handle, _def.volume * _scale * sfx_volume_setting(), 0);
-	audio_sound_pitch(_handle, random_range(_def.pitchLow, _def.pitchHigh));
-	return _handle;
+    show_debug_message("=== SFX PLAY: " + string(_key) + " ===");
+
+    if (!variable_struct_exists(global.sfxDefs, _key)) {
+        show_debug_message("FAILED: sound definition missing");
+        return -1;
+    }
+
+    var _def = variable_struct_get(global.sfxDefs, _key);
+
+    var _last = variable_struct_exists(global.sfx.lastPlayed, _key)
+        ? variable_struct_get(global.sfx.lastPlayed, _key)
+        : -999999;
+
+    var _elapsed = current_time - _last;
+
+    show_debug_message("Cooldown: " + string(_def.cooldown));
+    show_debug_message("Elapsed: " + string(_elapsed));
+
+    if (_elapsed < _def.cooldown) {
+        show_debug_message("FAILED: sound is on cooldown");
+        return -1;
+    }
+
+    var _asset = sfx_pick_asset(_key, _def);
+
+    show_debug_message("Selected asset: " + string(_asset));
+
+    if (_asset == -1) {
+        show_debug_message("FAILED: no valid asset selected");
+        return -1;
+    }
+
+    var _handle = audio_play_sound(_asset, _def.priority, false);
+
+    show_debug_message("Playback handle: " + string(_handle));
+
+    if (_handle == -1) {
+        show_debug_message("FAILED: audio_play_sound returned -1");
+        return -1;
+    }
+
+    variable_struct_set(global.sfx.lastPlayed, _key, current_time);
+
+    var _volume = _def.volume * _scale * sfx_volume_setting();
+    audio_sound_gain(_handle, _volume, 0);
+    audio_sound_pitch(_handle, random_range(_def.pitchLow, _def.pitchHigh));
+
+    show_debug_message("Playback started. Volume: " + string(_volume));
+
+    return _handle;
 }
+
 
 // 0 when zoomed right out, 1 when zoomed in (smooth in between)
 function get_zoom_near_factor(_g) {

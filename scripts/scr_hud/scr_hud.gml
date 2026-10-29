@@ -14,6 +14,7 @@ draw_set_font(fnt_txt);
 function make_button(_label, _sub, _action, _arg, _arg2, _enabled, _why, _tip) {
 	return {
 		x: 0, y: 0, w: BUTTON_W, h: BUTTON_H,
+		colour: -1,
 		label: _label,
 		sub: _sub,
 		action: _action,
@@ -46,6 +47,10 @@ function get_unit_tip(_type) {
 	if (_s.capacity > 0) {
 		_text += "\\nCarries up to " + string(_s.capacity) + " weight of land units";
 	}
+  	_text += "\\nBuildings x" + string(_s.buildingMult) + (_s.hitsAir ? "   Hits aircraft" : "   Cannot hit aircraft");
+  	if (_s.domain == DOMAIN.AIR) {
+  		_text += "\\nFlies: ignores weight, terrain and walls";
+  	}
 	return _text;
 }
 
@@ -102,6 +107,7 @@ function get_hud_buttons(_g) {
 	if (!panel_is_overlay(_g.panel)) {
 		add_bottom_buttons(_g, _list, _state);
 	}
+	add_final_vote_buttons(_g, _list);
 	return _list;
 }
 
@@ -215,19 +221,6 @@ function add_build_buttons(_g, _list, _state) {
 	}
 }
 
-// Where a research node sits inside the overlay (shared by the buttons and the link lines)
-function get_research_node_rect(_g, _r) {
-	var _o = get_overlay_rect(_g);
-	var _def = global.researchDefs[_r];
-	var _cx = _o.x + (_o.w / 3) * (_def.branch + 0.5);
-	return {
-		x: _cx - RESEARCH_NODE_W - 6 + _def.col * (RESEARCH_NODE_W + 12),
-		y: _o.y + 170 + (_def.row - 1) * 100,
-		w: RESEARCH_NODE_W,
-		h: RESEARCH_NODE_H
-	};
-}
-
 function add_overlay_buttons(_g, _list, _state) {
 	var _world = _g.world;
 	var _local = _g.localNation;
@@ -242,9 +235,16 @@ function add_overlay_buttons(_g, _list, _state) {
 	_close.zone = 4;
 	array_push(_list, _close);
 
-	if (_g.panel == PANEL.RESEARCH) {
+		if (_g.panel == PANEL.RESEARCH) {
+		clamp_research_pan(_g);
+		var _view = get_research_view(_g);
 		for (var _r = 0; _r < RESEARCH.COUNT; _r++) {
 			var _rdef = global.researchDefs[_r];
+			var _rect = get_research_node_rect(_g, _r);
+			// Nodes scrolled out of view cannot be clicked
+			if (!point_in_rectangle(_rect.x + _rect.w / 2, _rect.y + _rect.h / 2, _view.x, _view.y, _view.x + _view.w, _view.y + _view.h)) {
+				continue;
+			}
 			var _rSub = string(_rdef.cost) + " RP";
 			var _rWhy = "";
 			var _rState = 1;
@@ -252,14 +252,13 @@ function add_overlay_buttons(_g, _list, _state) {
 				_rSub = "Researched";
 				_rWhy = "Already researched";
 				_rState = 2;
-			} else if ((_rdef.prereq != NO_ID) && !_state.researched[_rdef.prereq]) {
+			} else if (!research_prereqs_met(_state, _rdef)) {
 				_rSub = "Locked";
-				_rWhy = "Needs: " + global.researchDefs[_rdef.prereq].researchName;
+				_rWhy = "Needs: " + get_research_missing_text(_state, _rdef);
 				_rState = 0;
 			} else if (_state.rp < _rdef.cost) {
 				_rWhy = "Not enough research points";
 			}
-			var _rect = get_research_node_rect(_g, _r);
 			var _node = make_button(_rdef.researchName, _rSub, UI_ACT.RESEARCH, _r, NO_ID, (_rWhy == ""), _rWhy, _rdef.desc + "\\nCost: " + string(_rdef.cost) + " RP");
 			_node.x = _rect.x;
 			_node.y = _rect.y;
@@ -601,6 +600,11 @@ function execute_hud_button(_g, _button) {
 		case UI_ACT.RENAME_CITY:
 			rename_begin(_g, _g.selectedCityId);
 			return;
+			
+		case UI_ACT.FINAL_VOTE:
+			_cmd = make_command(CMD.FINAL_VOTE, _local);
+			_cmd.flag = _button.arg;
+			break;
 	}
 	run_player_command(_g, _cmd);
 }
@@ -688,13 +692,13 @@ function get_selection_lines(_g) {
 
 function draw_hud_button(_b, _mx, _my) {
 	var _hover = point_in_button(_b, _mx, _my);
-	var _fill = make_colour_rgb(40, 55, 85);
+	var _fill = (_b.colour != -1) ? _b.colour : make_colour_rgb(40, 55, 85);
 	if (!_b.enabled) {
 		_fill = make_colour_rgb(50, 50, 50);
 	} else if (_b.active) {
 		_fill = make_colour_rgb(90, 120, 170);
 	} else if (_hover) {
-		_fill = make_colour_rgb(70, 90, 130);
+		_fill = (_b.colour != -1) ? merge_colour(_b.colour, c_white, 0.25) : make_colour_rgb(70, 90, 130);
 	}
 	draw_set_colour(_fill);
 	draw_rectangle(_b.x, _b.y, _b.x + _b.w, _b.y + _b.h, false);
@@ -770,7 +774,7 @@ function draw_hud(_g) {
 	var _bottomTop = _g.screenH - 26 - BUTTON_H;
 	for (var _i = 0; _i < array_length(_buttons); _i++) {
 		var _b = _buttons[_i];
-		if ((_b.zone == 1) || (_b.zone == 3) || (_b.zone == 4)) {
+		if ((_b.zone == 1) || (_b.zone == 3) || (_b.zone == 4) || (_b.zone == 5)) {
 			continue;
 		}
 		draw_hud_button(_b, _mx, _my);
@@ -801,7 +805,7 @@ function draw_hud(_g) {
 	draw_set_halign(fa_right);
 	draw_set_valign(fa_bottom);
 	draw_set_colour(c_ltgray);
-	draw_text(_g.screenW - 12 - ((_g.panel == PANEL.BUILD) ? PANEL_W : 0), _g.screenH - 6, "LMB select / order  |  drag box  |  MMB pan  |  wheel zoom  |  RMB cancel / deselect  |  E load / unload boat  |  F1 debug");
+	draw_text(_g.screenW - 12 - ((_g.panel == PANEL.BUILD) ? PANEL_W : 0), _g.screenH - 6, "LMB select / order  |  drag box  |  MMB / WASD pan  |  wheel zoom  |  RMB cancel / deselect  |  E load / unload boat  |  F1 debug");
 	draw_set_halign(fa_left);
 	
 	// Overlay screens (research tree, diplomacy, ideology)
@@ -810,6 +814,7 @@ function draw_hud(_g) {
 	}
 	
 	draw_notices(_g);
+	draw_final_banner(_g, _buttons, _mx, _my);
 
 	// Hover tooltip
 	for (var _t = 0; _t < array_length(_buttons); _t++) {
@@ -841,10 +846,10 @@ function draw_hud(_g) {
 		var _toastW = max(320, string_width(_g.toastText) + 32);
 		draw_set_colour(c_black);
 		draw_set_alpha(0.7);
-		draw_rectangle(_g.screenW / 2 - _toastW / 2, TOP_H + 12, _g.screenW / 2 + _toastW / 2, TOP_H + 40, false);
+		draw_rectangle(_g.screenW / 2 - _toastW / 2, get_notice_top(_g), _g.screenW / 2 + _toastW / 2, get_notice_top(_g) + 28, false);
 		draw_set_alpha(1);
 		draw_set_colour(c_white);
-		draw_text(_g.screenW / 2, TOP_H + 18, _g.toastText);
+		draw_text(_g.screenW / 2, get_notice_top(_g) + 6, _g.toastText);
 		draw_set_halign(fa_left);
 	}
 
@@ -857,7 +862,7 @@ function draw_hud(_g) {
 }
 
 function draw_notices(_g) {
-	var _y = TOP_H + 12;
+	var _y = get_notice_top(_g);
 	draw_set_halign(fa_left);
 	draw_set_valign(fa_top);
 	var _shown = 0;
@@ -922,50 +927,6 @@ function draw_side_panel(_g, _buttons, _mx, _my) {
 // Overlay screens
 // ------------------------------------------------------------
 
-function draw_overlay(_g, _buttons, _mx, _my) {
-	var _o = get_overlay_rect(_g);
-	var _local = _g.localNation;
-
-	// Dim everything under the top bar
-	draw_set_colour(c_black);
-	draw_set_alpha(0.6);
-	draw_rectangle(0, TOP_H, _g.screenW, _g.screenH, false);
-	draw_set_alpha(1);
-	draw_set_colour(make_colour_rgb(18, 24, 38));
-	draw_rectangle(_o.x, _o.y, _o.x + _o.w, _o.y + _o.h, false);
-	draw_set_colour(c_white);
-	draw_rectangle(_o.x, _o.y, _o.x + _o.w, _o.y + _o.h, true);
-	draw_set_halign(fa_left);
-	draw_set_valign(fa_top);
-
-	var _titles = ["", "", "Research Tree", "Diplomacy", "Ideology"];
-	draw_text_transformed(_o.x + 20, _o.y + 12, _titles[_g.panel], 1.4, 1.4, 0);
-
-	if (_local != NO_ID) {
-		if (_g.panel == PANEL.RESEARCH) {
-			draw_research_tree(_g, _o);
-		} else if (_g.panel == PANEL.DIPLOMACY) {
-			draw_set_colour(c_ltgray);
-			draw_text_ext(_o.x + 20, _o.y + _o.h - 56, "Build an Embassy, select it and pick a nation to send an envoy to their capital. Declaring war cannot be refused, and the treaty ends 2 minutes later.", 16, _o.w - 40);
-			draw_set_colour(c_white);
-		} else if (_g.panel == PANEL.IDEOLOGY) {
-			draw_ideology_panel(_g, _o);
-		}
-	}
-
-	for (var _i = 0; _i < array_length(_buttons); _i++) {
-		var _b = _buttons[_i];
-		if (_b.zone != 4) {
-			continue;
-		}
-		if (_b.branch != NO_ID) {
-			draw_research_node(_b, _mx, _my);
-		} else {
-			draw_hud_button(_b, _mx, _my);
-		}
-	}
-}
-
 // Draws an elbow link: down from the first point, across, and down to the second
 function draw_tree_link(_x1, _y1, _x2, _y2, _col, _width) {
 	var _midY = (_y1 + _y2) / 2;
@@ -973,72 +934,6 @@ function draw_tree_link(_x1, _y1, _x2, _y2, _col, _width) {
 	draw_line_width(_x1, _y1, _x1, _midY, _width);
 	draw_line_width(_x1, _midY, _x2, _midY, _width);
 	draw_line_width(_x2, _midY, _x2, _y2, _width);
-}
-
-function draw_research_tree(_g, _o) {
-	var _local = _g.localNation;
-	var _state = _g.world.nationStates[_local];
-	var _dim = make_colour_rgb(70, 75, 90);
-
-	draw_set_halign(fa_left);
-	draw_set_valign(fa_top);
-	draw_set_colour(c_aqua);
-	draw_text(_o.x + 20, _o.y + 44, "Research points: " + string(floor(_state.rp)) + "  (+" + string_format(get_rp_rate(_g.world, _local), 1, 1) + "/s)");
-
-	// The City Hall is the root and is always researched
-	var _rootW = 150;
-	var _rootH = 44;
-	var _rootX = _o.x + _o.w / 2;
-	var _rootY = _o.y + 56;
-	var _gold = make_colour_rgb(255, 210, 60);
-	var _headerY = _o.y + 120;
-
-	for (var _br = 0; _br < 3; _br++) {
-		var _cx = _o.x + (_o.w / 3) * (_br + 0.5);
-		var _bc = get_branch_colour(_br);
-
-		// Root to branch header
-		draw_tree_link(_rootX, _rootY + _rootH, _cx, _headerY, _bc, 3);
-
-		draw_set_colour(merge_colour(_bc, c_black, 0.45));
-		draw_rectangle(_cx - RESEARCH_NODE_W - 6, _headerY, _cx + RESEARCH_NODE_W + 6, _headerY + 28, false);
-		draw_set_colour(_bc);
-		draw_rectangle(_cx - RESEARCH_NODE_W - 6, _headerY, _cx + RESEARCH_NODE_W + 6, _headerY + 28, true);
-		draw_set_halign(fa_center);
-		draw_set_valign(fa_middle);
-		draw_set_colour(c_white);
-		draw_text(_cx, _headerY + 14, get_branch_name(_br));
-	}
-
-	// Links: nodes without a prerequisite hang off their branch header
-	for (var _r = 0; _r < RESEARCH.COUNT; _r++) {
-		var _def = global.researchDefs[_r];
-		var _rect = get_research_node_rect(_g, _r);
-		var _bcol = get_branch_colour(_def.branch);
-		var _nodeX = _rect.x + _rect.w / 2;
-		if (_def.prereq == NO_ID) {
-			var _hx = _o.x + (_o.w / 3) * (_def.branch + 0.5);
-			draw_tree_link(_hx, _headerY + 28, _nodeX, _rect.y, _bcol, 2);
-		} else {
-			var _pr = get_research_node_rect(_g, _def.prereq);
-			var _linkCol = _state.researched[_def.prereq] ? _bcol : _dim;
-			draw_tree_link(_pr.x + _pr.w / 2, _pr.y + _pr.h, _nodeX, _rect.y, _linkCol, 2);
-		}
-	}
-
-	// Root node on top of the links
-	draw_set_colour(merge_colour(_gold, c_black, 0.6));
-	draw_rectangle(_rootX - _rootW / 2, _rootY, _rootX + _rootW / 2, _rootY + _rootH, false);
-	draw_set_colour(_gold);
-	draw_rectangle(_rootX - _rootW / 2, _rootY, _rootX + _rootW / 2, _rootY + _rootH, true);
-	draw_set_halign(fa_center);
-	draw_set_valign(fa_middle);
-	draw_set_colour(c_white);
-	draw_text(_rootX, _rootY + 14, "City Hall");
-	draw_set_colour(_gold);
-	draw_text(_rootX, _rootY + 32, "Researched");
-	draw_set_halign(fa_left);
-	draw_set_valign(fa_top);
 }
 
 function draw_research_node(_b, _mx, _my) {
@@ -1165,27 +1060,4 @@ function draw_offer_popup(_g, _buttons, _mx, _my) {
 			draw_hud_button(_buttons[_i], _mx, _my);
 		}
 	}
-}
-
-function draw_game_over(_g) {
-	var _world = _g.world;
-	var _text = "";
-	if (_world.winner != NO_ID) {
-		_text = (_world.winner == _g.localNation) ? "Victory!" : (get_owner_name(_world.winner) + " wins");
-	} else if ((_g.localNation != NO_ID) && _world.nationStates[_g.localNation].eliminated) {
-		_text = "Your nation has fallen";
-	}
-	if (_text == "") {
-		return;
-	}
-	draw_set_halign(fa_center);
-	draw_set_valign(fa_middle);
-	draw_set_colour(c_black);
-	draw_set_alpha(0.7);
-	draw_rectangle(0, _g.screenH / 2 - 40, _g.screenW, _g.screenH / 2 + 40, false);
-	draw_set_alpha(1);
-	draw_set_colour(c_white);
-	draw_text_transformed(_g.screenW / 2, _g.screenH / 2, _text, 3, 3, 0);
-	draw_set_halign(fa_left);
-	draw_set_valign(fa_top);
 }

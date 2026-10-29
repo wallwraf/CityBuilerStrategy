@@ -4,6 +4,7 @@
 // ============================================================
 
 function update_bots(_world, _dt) {
+	var _level = get_ai_level(_world);
 	for (var _n = 0; _n < MAX_NATIONS; _n++) {
 		var _state = _world.nationStates[_n];
 		if (!_state.active || _state.eliminated || (_state.slotType != SLOT_TYPE.BOT)) {
@@ -13,15 +14,15 @@ function update_bots(_world, _dt) {
 		_state.botBuildTimer -= _dt;
 		_state.botMilTimer -= _dt;
 		if (_state.botTimer <= 0) {
-			_state.botTimer = 2;
+			_state.botTimer = 2 * _level.think;
 			run_bot_turn(_world, _n);
 		}
 		if (_state.botBuildTimer <= 0) {
-			_state.botBuildTimer = 6;
+			_state.botBuildTimer = 6 * _level.think;
 			run_bot_builder(_world, _n);
 		}
 		if (_state.botMilTimer <= 0) {
-			_state.botMilTimer = 30;
+			_state.botMilTimer = 30 * _level.think;
 			run_bot_military(_world, _n);
 		}
 	}
@@ -85,7 +86,7 @@ function run_bot_turn(_world, _owner) {
 	var _bestResearch = NO_ID;
 	for (var _r = 0; _r < RESEARCH.COUNT; _r++) {
 		var _rdef = global.researchDefs[_r];
-		if (_state.researched[_r] || ((_rdef.prereq != NO_ID) && !_state.researched[_rdef.prereq]) || (_state.rp < _rdef.cost)) {
+		if (_state.researched[_r] || !research_prereqs_met(_state, _rdef) || (_rdef.branch == BRANCH.INDUSTRY) || (_state.rp < _rdef.cost)) {
 			continue;
 		}
 		if ((_bestResearch == NO_ID) || (_rdef.cost < global.researchDefs[_bestResearch].cost)) {
@@ -274,8 +275,9 @@ function run_bot_military(_world, _owner) {
 	}
 
 	// Too early, or too few cities to risk the army
-	var _needed = min(26, 8 + _state.botWave * 2 + _cityCount);
-	if ((_cityCount < 2) || (_world.time < 300) || (array_length(_army) < _needed)) {
+	var _level = get_ai_level(_world);
+	var _needed = max(4, floor(min(26, 8 + _state.botWave * 2 + _cityCount) * _level.army));
+	if ((_cityCount < 2) || (_world.time < _level.grace) || (array_length(_army) < _needed)) {
 		return;
 	}
 

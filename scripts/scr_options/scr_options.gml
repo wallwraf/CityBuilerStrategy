@@ -35,6 +35,7 @@ function get_default_options() {
 		// Game setup (Play screen)
 		mapSize: 64,
 		bandits: 1,
+		aiDifficulty: 1,
 		botFactions: 3
 	};
 }

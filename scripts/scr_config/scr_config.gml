@@ -22,7 +22,7 @@
 #macro MAX_ZOOM 4
 
 // Misc
-#macro START_GOLD 150
+#macro START_GOLD 150000
 #macro DRAG_THRESHOLD 6
 #macro ELEVATION_MOUNTAIN 8
 
@@ -41,7 +41,7 @@
 #macro BOT_FAVOUR_MAX 60
 
 // Research
-#macro BASE_RP_RATE 0.5
+#macro BASE_RP_RATE 1000.5
 
 // UI
 #macro BUTTON_W 158
@@ -69,7 +69,8 @@ enum RES {
 
 enum DOMAIN {
 	LAND,
-	WATER
+	WATER,
+	AIR
 }
 
 // The order here must match the order of the nation unitNames arrays
@@ -112,6 +113,17 @@ enum UNIT_TYPE {
 	ENVOY,
 	TRAVELER_BOAT,
 	ENVOY_BOAT,
+	// Expansion
+	BATTERING_RAM,
+	CATAPULT,
+	MANGONEL,
+	HEAVY_TANK,
+	BREAKER_TANK,
+	ROCKET_ARTILLERY,
+	BIPLANE,
+	TRANSPORT_PLANE,
+	DIVE_BOMBER,
+	HEAVY_BOMBER,
 	COUNT
 }
 
@@ -123,6 +135,9 @@ enum UNIT_SRC {
 	HOSPITAL,
 	PORT,
 	EMBASSY,
+	SIEGE,
+	TANK,
+	AIRFIELD,
 	NONE
 }
 
@@ -163,6 +178,9 @@ enum BUILDING {
 	MARKET,
 	EMBASSY,
 	TRAP,
+	SIEGE_WORKSHOP,
+	TANK_WORKSHOP,
+	AIRFIELD,
 	COUNT
 }
 
@@ -204,6 +222,11 @@ enum RESEARCH {
 	SCHOLARS,
 	MERCHANT_GUILDS,
 	GRAND_LIBRARY,
+	// Expansion
+	STANDING_ARMY, BARRACKS_DOCTRINE, VETERAN_CORPS, GARRISON_DOCTRINE,
+	COMPOSITE_ARMOR, TRADE_EMPIRE, ACADEMY,
+	SIEGE_ENGINEERING, SIEGE_ARTILLERY, AVIATION, ARMOURED_WARFARE,
+	AIR_TRANSPORT, DIVE_BOMBERS, HEAVY_ORDNANCE, STRATEGIC_BOMBING,
 	COUNT
 }
 
@@ -211,7 +234,9 @@ enum RESEARCH {
 enum BRANCH {
 	OFFENSE,
 	DEFENSE,
-	ECONOMY
+	ECONOMY,
+	INDUSTRY,
+	COUNT
 }
 
 // What a research node does besides unlocking things
@@ -247,7 +272,8 @@ enum CMD {
 	TOGGLE_CARGO,
 	CONNECT_PATH,
 	DEMOLISH,
-	RENAME_CITY
+	RENAME_CITY,
+	FINAL_VOTE
 }
 
 // Which side panel is open
@@ -277,6 +303,7 @@ enum UI_ACT {
 	TOGGLE_DEMOLISH,
 	DEMOLISH,
 	RENAME_CITY,
+	FINAL_VOTE,
 	NONE
 }
 
@@ -286,8 +313,10 @@ function init_game_data() {
 	init_building_defs();
 	init_research_defs();
 	init_nations();
+	init_expansion();
 	init_map_presets();
 	init_ideologies();
+	init_ai_levels();
 }
 
 function init_biomes() {
@@ -325,7 +354,9 @@ function define_unit(_type, _subtitle, _role, _desc, _source, _cost, _hp, _damag
 		targetable: true,
 		ability: ABILITY.NONE,
 		splash: 0,
-		buildingMult: 1,
+		buildingMult: 0.4,
+		hitsAir: (_range >= 2),
+		hitsGround: true,
 		healRate: 0,
 		healRadius: 0,
 		buffMult: 1,
@@ -507,6 +538,7 @@ function define_research(_id, _name, _cost, _prereq, _branch, _row, _col, _fx, _
 		researchName: _name,
 		cost: _cost,
 		prereq: _prereq,
+		prereq2: NO_ID,
 		branch: _branch,
 		row: _row,
 		col: _col,
@@ -520,6 +552,7 @@ function get_branch_colour(_branch) {
 	switch (_branch) {
 		case BRANCH.OFFENSE: return make_colour_rgb(200, 60, 60);
 		case BRANCH.DEFENSE: return make_colour_rgb(70, 120, 220);
+		case BRANCH.INDUSTRY: return make_colour_rgb(230, 150, 40);
 	}
 	return make_colour_rgb(70, 180, 90);
 }
@@ -528,20 +561,23 @@ function get_branch_name(_branch) {
 	switch (_branch) {
 		case BRANCH.OFFENSE: return "Offense";
 		case BRANCH.DEFENSE: return "Defense";
+		case BRANCH.INDUSTRY: return "Industry";
 	}
 	return "Economy";
 }
 
-// Maximum unit weight a tile can hold. Units that weigh more cannot walk onto it.
+// Total unit weight a tile can hold (a Colossus is 4, a Warrior is 1). Aircraft ignore this completely.
 function get_tile_weight_limit(_world, _gx, _gy) {
 	if (!tile_in_bounds(_world, _gx, _gy)) {
 		return 0;
 	}
 	switch (ds_grid_get(_world.biome, _gx, _gy)) {
 		case BIOME.MOUNTAIN: return 0;
-		case BIOME.WATER: return 99;
-		case BIOME.DESERT: return 3;
-		case BIOME.SNOW: return 3;
+		case BIOME.GRASSLAND: return 6;
+		case BIOME.FOREST: return 5;
+		case BIOME.DESERT: return 4;
+		case BIOME.SNOW: return 4;
+		case BIOME.WATER: return 4;
 	}
 	return 4;
 }
@@ -725,4 +761,22 @@ function init_map_presets() {
 	global.mapPresets[3] = { presetName: "Highlands", scale: 0.09, waterLevel: 0.30, mountainLevel: 0.62, falloff: 0.4, tempOffset: 0, moistOffset: 0 };
 	global.mapPresets[4] = { presetName: "Frozen North", scale: 0.07, waterLevel: 0.44, mountainLevel: 0.76, falloff: 0.5, tempOffset: -0.25, moistOffset: 0 };
 	global.mapPresets[5] = { presetName: "Scorched Lands", scale: 0.07, waterLevel: 0.40, mountainLevel: 0.78, falloff: 0.5, tempOffset: 0.25, moistOffset: -0.2 };
+}
+
+function init_ai_levels() {
+	// think: multiplier on how often bots act (lower is faster). income: gold and research multiplier.
+	// army: multiplier on the army needed before a wave attacks. grace: seconds before the first wave.
+	global.aiLevels = [
+		{ levelName: "Easy", think: 1.6, income: 0.8, army: 1.4, grace: 480 },
+		{ levelName: "Normal", think: 1, income: 1, army: 1, grace: 300 },
+		{ levelName: "Hard", think: 0.7, income: 1.25, army: 0.8, grace: 240 },
+		{ levelName: "Brutal", think: 0.5, income: 1.5, army: 0.6, grace: 180 }
+	];
+}
+
+// The difficulty this world was created with (worlds without the setting, like the menu demo, use Normal)
+function get_ai_level(_world) {
+	var _s = _world.settings;
+	var _i = variable_struct_exists(_s, "aiDifficulty") ? _s.aiDifficulty : 1;
+	return global.aiLevels[clamp(_i, 0, array_length(global.aiLevels) - 1)];
 }

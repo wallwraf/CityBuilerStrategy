@@ -33,7 +33,34 @@ if (keyboard_check_pressed(vk_escape) && (placeType == NO_ID) && (array_length(s
 update_input(id);
 net_update_world(id, _dt);
 
+if (update_end_screen(id, _dt)) {
+	menu_return(id);
+	exit;
+}
+
 // F1 toggles the debug overlay (mouse and camera numbers)
 if (keyboard_check_pressed(vk_f1)) {
 	debugOverlay = !debugOverlay;
+}
+
+if (keyboard_check_pressed(ord("K"))) {
+    var _asset = audio_get_asset("snd_victory");
+
+    show_debug_message("=== DIRECT VICTORY TEST ===");
+    show_debug_message("Asset: " + string(_asset));
+
+    var _handle = audio_play_sound(_asset, 0, false);
+
+    show_debug_message("Direct playback handle: " + string(_handle));
+}
+
+if (keyboard_check_pressed(ord("L"))) {
+    var _asset = audio_get_asset("snd_defeat");
+
+    show_debug_message("=== DIRECT DEFEAT TEST ===");
+    show_debug_message("Asset: " + string(_asset));
+
+    var _handle = audio_play_sound(_asset, 0, false);
+
+    show_debug_message("Direct playback handle: " + string(_handle));
 }

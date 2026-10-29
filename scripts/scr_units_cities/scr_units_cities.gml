@@ -22,6 +22,9 @@ function create_unit(_world, _owner, _type, _gx, _gy) {
 		type: _type,
 		gx: _gx,
 		gy: _gy,
+		offX: 0,
+		offY: 0,
+		drawScale: 1,
 		visGx: _gx,
 		visGy: _gy,
 		hp: _stats.maxHp,
@@ -49,7 +52,7 @@ function create_unit(_world, _owner, _type, _gx, _gy) {
 	if (_stats.diplomat) {
 		ds_grid_set(_world.ghostGrid, _gx, _gy, _unit.unitId);
 	} else {
-		ds_grid_set(_world.unitGrid, _gx, _gy, _unit.unitId);
+		put_unit_on_tile(_world, _unit, _gx, _gy);
 	}
 	return _unit;
 }
@@ -60,12 +63,7 @@ function kill_unit(_world, _unit, _killerOwner) {
 	}
 	_unit.alive = false;
 	_unit.order = ORDER.NONE;
-	if (ds_grid_get(_world.unitGrid, _unit.gx, _unit.gy) == _unit.unitId) {
-		ds_grid_set(_world.unitGrid, _unit.gx, _unit.gy, NO_ID);
-	}
-	if (ds_grid_get(_world.ghostGrid, _unit.gx, _unit.gy) == _unit.unitId) {
-		ds_grid_set(_world.ghostGrid, _unit.gx, _unit.gy, NO_ID);
-	}
+	take_unit_off_tile(_world, _unit, _unit.gx, _unit.gy);
 	if ((_killerOwner >= 0) && (_killerOwner != _unit.owner)) {
 		_world.nationStates[_killerOwner].kills++;
 	}
@@ -101,52 +99,64 @@ function get_boat_cargo_weight(_world, _boat) {
 	return _total;
 }
 
-// Loads every land unit of the boat's nation within 1 tile, as far as the boat's weight capacity allows
 function load_boat(_world, _boat) {
-	var _capacity = global.unitStats[_boat.type].capacity;
+	var _carrierStats = global.unitStats[_boat.type];
+	var _capacity = _carrierStats.capacity;
+	var _flying = (_carrierStats.domain == DOMAIN.AIR);
 	var _used = get_boat_cargo_weight(_world, _boat);
 	var _loaded = 0;
 	var _full = false;
 	for (var _dx = -1; _dx <= 1; _dx++) {
 		for (var _dy = -1; _dy <= 1; _dy++) {
-			if ((_dx == 0) && (_dy == 0)) {
+			// A boat cannot load from its own water tile, a plane can load from the tile below it
+			if (!_flying && (_dx == 0) && (_dy == 0)) {
 				continue;
 			}
-			var _u = get_unit_at(_world, _boat.gx + _dx, _boat.gy + _dy);
-			if ((_u == undefined) || (_u.owner != _boat.owner) || !unit_can_be_carried(_u)) {
-				continue;
+			var _here = get_units_at(_world, _boat.gx + _dx, _boat.gy + _dy, false);
+			for (var _i = 0; _i < array_length(_here); _i++) {
+				var _u = _here[_i];
+				if ((_u.owner != _boat.owner) || !unit_can_be_carried(_u)) {
+					continue;
+				}
+				var _weight = global.unitStats[_u.type].weight;
+				if (_used + _weight > _capacity) {
+					_full = true;
+					continue;
+				}
+				take_unit_off_tile(_world, _u, _u.gx, _u.gy);
+				clear_unit_order(_u);
+				_u.carriedBy = _boat.unitId;
+				_u.gx = _boat.gx;
+				_u.gy = _boat.gy;
+				array_push(_boat.cargo, _u.unitId);
+				_used += _weight;
+				_loaded++;
 			}
-			var _weight = global.unitStats[_u.type].weight;
-			if (_used + _weight > _capacity) {
-				_full = true;
-				continue;
-			}
-			ds_grid_set(_world.unitGrid, _u.gx, _u.gy, NO_ID);
-			clear_unit_order(_u);
-			_u.carriedBy = _boat.unitId;
-			_u.gx = _boat.gx;
-			_u.gy = _boat.gy;
-			array_push(_boat.cargo, _u.unitId);
-			_used += _weight;
-			_loaded++;
 		}
 	}
 	if (_loaded == 0) {
-		return _full ? "The boat is full" : "No land units of yours within 1 tile";
+		return _full ? "It is full" : "No land units of yours within 1 tile";
 	}
 	return "";
 }
 
-// A free tile within 1 tile of the boat where this unit may stand
+// A tile within 1 tile of the carrier where this unit may stand
 function find_unload_tile(_world, _boat, _unit) {
+	var _flying = unit_is_flyer(_boat);
 	for (var _dx = -1; _dx <= 1; _dx++) {
 		for (var _dy = -1; _dy <= 1; _dy++) {
-			var _gx = _boat.gx + _dx;
-			var _gy = _boat.gy + _dy;
-			if (((_dx == 0) && (_dy == 0)) || !tile_is_free(_world, _gx, _gy)) {
+			if (!_flying && (_dx == 0) && (_dy == 0)) {
 				continue;
 			}
-			if (unit_terrain_ok(_world, _unit, _gx, _gy)) {
+			var _gx = _boat.gx + _dx;
+			var _gy = _boat.gy + _dy;
+			if (!tile_in_bounds(_world, _gx, _gy)) {
+				continue;
+			}
+			if ((ds_grid_get(_world.cityGrid, _gx, _gy) != NO_ID) || (ds_grid_get(_world.buildingGrid, _gx, _gy) != NO_ID)) {
+				continue;
+			}
+			if (unit_terrain_ok(_world, _unit, _gx, _gy) && tile_can_hold(_world, _unit, _gx, _gy)) {
 				return [_gx, _gy];
 			}
 		}
@@ -171,7 +181,7 @@ function unload_boat(_world, _boat) {
 		_u.visGx = _boat.gx;
 		_u.visGy = _boat.gy;
 		_u.actionTimer = 0.5;
-		ds_grid_set(_world.unitGrid, _u.gx, _u.gy, _u.unitId);
+		put_unit_on_tile(_world, _u, _u.gx, _u.gy);
 		_unloaded++;
 	}
 	_boat.cargo = _remaining;
@@ -181,36 +191,15 @@ function unload_boat(_world, _boat) {
 	return "";
 }
 
-function get_unit_at(_world, _gx, _gy) {
-	if (!tile_in_bounds(_world, _gx, _gy)) {
-		return undefined;
-	}
-	var _id = ds_grid_get(_world.unitGrid, _gx, _gy);
-	if (_id == NO_ID) {
-		_id = ds_grid_get(_world.ghostGrid, _gx, _gy);
-	}
-	if (_id == NO_ID) {
-		return undefined;
-	}
-	return _world.units[_id];
-}
-
 function move_unit_to(_world, _unit, _gx, _gy) {
-	if (unit_is_ghost(_unit)) {
-		if (ds_grid_get(_world.ghostGrid, _unit.gx, _unit.gy) == _unit.unitId) {
-			ds_grid_set(_world.ghostGrid, _unit.gx, _unit.gy, NO_ID);
-		}
-		_unit.gx = _gx;
-		_unit.gy = _gy;
-		ds_grid_set(_world.ghostGrid, _gx, _gy, _unit.unitId);
-		// Envoys turn into a boat on water, and back into a walking envoy on land
+	take_unit_off_tile(_world, _unit, _unit.gx, _unit.gy);
+	_unit.gx = _gx;
+	_unit.gy = _gy;
+	// Envoys turn into a boat on water, and back into a walking envoy on land (aircraft never change type)
+	if (unit_is_envoy(_unit)) {
 		_unit.type = tile_is_water(_world, _gx, _gy) ? UNIT_TYPE.ENVOY_BOAT : UNIT_TYPE.ENVOY;
-	} else {
-		ds_grid_set(_world.unitGrid, _unit.gx, _unit.gy, NO_ID);
-		_unit.gx = _gx;
-		_unit.gy = _gy;
-		ds_grid_set(_world.unitGrid, _gx, _gy, _unit.unitId);
 	}
+	put_unit_on_tile(_world, _unit, _gx, _gy);
 	// Passengers travel with the boat
 	for (var _c = 0; _c < array_length(_unit.cargo); _c++) {
 		var _passenger = _world.units[_unit.cargo[_c]];
@@ -315,23 +304,26 @@ function get_unit_attack_delay(_world, _unit) {
 // Targeting and attacking
 // ------------------------------------------------------------
 
-// The nearest enemy unit within range (envoys are ignored, they are not targetable by default)
-function find_enemy_unit_near(_world, _owner, _gx, _gy, _range) {
+// The nearest enemy unit within range. Pass the attacker's unit type so melee cannot "hit" aircraft.
+function find_enemy_unit_near(_world, _owner, _gx, _gy, _range, _attackType = NO_ID) {
 	var _best = undefined;
 	var _bestDist = 999;
 	for (var _ox = -_range; _ox <= _range; _ox++) {
 		for (var _oy = -_range; _oy <= _range; _oy++) {
-			var _other = get_unit_at(_world, _gx + _ox, _gy + _oy);
-			if ((_other == undefined) || !global.unitStats[_other.type].targetable) {
-				continue;
-			}
-			if (!are_hostile(_world, _owner, _other.owner)) {
-				continue;
-			}
-			var _dist = max(abs(_ox), abs(_oy));
-			if (_dist < _bestDist) {
-				_bestDist = _dist;
-				_best = _other;
+			var _here = get_units_at(_world, _gx + _ox, _gy + _oy, true);
+			for (var _i = 0; _i < array_length(_here); _i++) {
+				var _other = _here[_i];
+				if (!global.unitStats[_other.type].targetable || !are_hostile(_world, _owner, _other.owner)) {
+					continue;
+				}
+				if ((_attackType != NO_ID) && !unit_type_can_target(_attackType, _other.type)) {
+					continue;
+				}
+				var _dist = max(abs(_ox), abs(_oy));
+				if (_dist < _bestDist) {
+					_bestDist = _dist;
+					_best = _other;
+				}
 			}
 		}
 	}
@@ -406,16 +398,15 @@ function strike_unit(_world, _attacker, _target) {
 	var _stats = global.unitStats[_attacker.type];
 	var _damage = get_unit_attack_damage(_world, _attacker);
 	damage_unit(_world, _target, _damage, _attacker.owner);
-	// Splash hits enemies standing next to the target for half damage
-	if (_stats.splash > 0) {
+	// Splash hits ground enemies around the target for half damage
+	if ((_stats.splash > 0) && !unit_is_flyer(_target)) {
 		for (var _ox = -_stats.splash; _ox <= _stats.splash; _ox++) {
 			for (var _oy = -_stats.splash; _oy <= _stats.splash; _oy++) {
-				if ((_ox == 0) && (_oy == 0)) {
-					continue;
-				}
-				var _near = get_unit_at(_world, _target.gx + _ox, _target.gy + _oy);
-				if ((_near != undefined) && are_hostile(_world, _attacker.owner, _near.owner)) {
-					damage_unit(_world, _near, _damage * 0.5, _attacker.owner);
+				var _near = get_units_at(_world, _target.gx + _ox, _target.gy + _oy, false);
+				for (var _i = 0; _i < array_length(_near); _i++) {
+					if ((_near[_i].unitId != _target.unitId) && are_hostile(_world, _attacker.owner, _near[_i].owner)) {
+						damage_unit(_world, _near[_i], _damage * 0.5, _attacker.owner);
+					}
 				}
 			}
 		}
@@ -426,7 +417,12 @@ function unit_perform_attack(_world, _unit) {
 	var _stats = global.unitStats[_unit.type];
 	switch (_unit.order) {
 		case ORDER.ATTACK_UNIT:
-			strike_unit(_world, _unit, _world.units[_unit.targetId]);
+			var _victim = _world.units[_unit.targetId];
+			if (!_victim.alive || !unit_can_target(_unit, _victim)) {
+				clear_unit_order(_unit);
+				return;
+			}
+			strike_unit(_world, _unit, _victim);
 			break;
 		case ORDER.ATTACK_BUILDING:
 			damage_building(_world, _world.buildings[_unit.targetId], get_unit_attack_damage(_world, _unit) * _stats.buildingMult, _unit.owner);
@@ -440,7 +436,7 @@ function unit_perform_attack(_world, _unit) {
 
 // Idle fighters shoot at the nearest enemy unit in range
 function unit_auto_attack(_world, _unit, _stats) {
-	var _target = find_enemy_unit_near(_world, _unit.owner, _unit.gx, _unit.gy, _stats.range);
+	var _target = find_enemy_unit_near(_world, _unit.owner, _unit.gx, _unit.gy, _stats.range, _unit.type);
 	if (_target == undefined) {
 		return;
 	}
@@ -515,11 +511,8 @@ function find_path(_world, _unit, _goalGx, _goalGy, _blockOccupied) {
 				if (!tile_in_bounds(_world, _nx, _ny) || (ds_grid_get(_world.pfClosed, _nx, _ny) == 1)) {
 					continue;
 				}
-				if (_blockOccupied && !unit_is_ghost(_unit) && (_ny == _goalGy)) {
-					var _occupant = ds_grid_get(_world.unitGrid, _nx, _ny);
-					if ((_occupant != NO_ID) && (_occupant != _unit.unitId)) {
-						continue;
-					}
+				if (_blockOccupied && !((_nx == _goalGx) && (_ny == _goalGy)) && !tile_can_hold(_world, _unit, _nx, _ny)) {
+				  	continue;
 				}
 				if (!unit_step_ok(_world, _unit, _cx, _cy, _nx, _ny)) {
 					continue;
@@ -570,10 +563,9 @@ function unit_follow_path(_world, _unit) {
 		}
 		_px = _node[0];
 		_py = _node[1];
-		// Fast units can hop over a unit in the way, but must land on an empty tile
-		var _occupant = ds_grid_get(_world.unitGrid, _px, _py);
-		if ((_occupant == NO_ID) || (_occupant == _unit.unitId) || unit_is_ghost(_unit)) {
-			_landing = _idx;
+		// Fast units can hop over a full tile, but must land on one with room
+		if (tile_can_hold(_world, _unit, _px, _py)) {
+		  	_landing = _idx;
 		}
 	}
 	if (_landing < 0) {
@@ -623,7 +615,8 @@ function update_units(_world, _dt) {
 		// Smooth the drawn position toward the real tile
 		_u.visGx = lerp(_u.visGx, _u.gx, min(1, _dt * 10));
 		_u.visGy = lerp(_u.visGy, _u.gy, min(1, _dt * 10));
-
+		
+		update_unit_offset(_world, _u, _dt);
 		update_unit_ability(_world, _u, _stats, _dt);
 
 		_u.repathTimer -= _dt;
@@ -651,9 +644,8 @@ function update_unit_order(_world, _u, _stats) {
 				clear_unit_order(_u);
 				break;
 			}
-			var _standing = get_unit_at(_world, _u.goalGx, _u.goalGy);
-			if ((_standing != undefined) && (tile_distance(_u.gx, _u.gy, _u.goalGx, _u.goalGy) <= 1)) {
-				// Someone else is standing on the goal, stop next to them
+			if (!tile_can_hold(_world, _u, _u.goalGx, _u.goalGy) && (tile_distance(_u.gx, _u.gy, _u.goalGx, _u.goalGy) <= 1)) {
+				// The goal tile is full, stop next to it
 				clear_unit_order(_u);
 				break;
 			}
@@ -711,12 +703,12 @@ function update_unit_ability(_world, _u, _stats, _dt) {
 			var _r = _stats.healRadius;
 			for (var _ox = -_r; _ox <= _r; _ox++) {
 				for (var _oy = -_r; _oy <= _r; _oy++) {
-					if ((_ox == 0) && (_oy == 0)) {
-						continue;
-					}
-					var _ally = get_unit_at(_world, _u.gx + _ox, _u.gy + _oy);
-					if ((_ally != undefined) && (_ally.owner == _u.owner)) {
-						_ally.hp = min(global.unitStats[_ally.type].maxHp, _ally.hp + _stats.healRate * _dt);
+					var _allies = get_units_at(_world, _u.gx + _ox, _u.gy + _oy, false);
+					for (var _a = 0; _a < array_length(_allies); _a++) {
+						var _ally = _allies[_a];
+						if ((_ally.unitId != _u.unitId) && (_ally.owner == _u.owner)) {
+							_ally.hp = min(global.unitStats[_ally.type].maxHp, _ally.hp + _stats.healRate * _dt);
+						}
 					}
 				}
 			}
@@ -751,7 +743,7 @@ function update_unit_ability(_world, _u, _stats, _dt) {
 // ------------------------------------------------------------
 
 function get_city_max_hp(_level) {
-	return 200 + 80 * _level;
+	return floor((200 + 80 * _level) * CITY_HP_SCALE);
 }
 
 function create_city(_world, _owner, _gx, _gy) {
@@ -980,11 +972,14 @@ function get_rp_rate(_world, _owner) {
 }
 
 function update_economy(_world, _dt) {
+	var _level = get_ai_level(_world);
 	for (var _n = 0; _n < MAX_NATIONS; _n++) {
 		var _state = _world.nationStates[_n];
 		if (_state.active && !_state.eliminated) {
-			_state.gold += get_nation_income(_world, _n) * _dt;
-			_state.rp += get_rp_rate(_world, _n) * _dt;
+			// Difficulty only changes what bots earn
+			var _mult = (_state.slotType == SLOT_TYPE.BOT) ? _level.income : 1;
+			_state.gold += get_nation_income(_world, _n) * _dt * _mult;
+			_state.rp += get_rp_rate(_world, _n) * _dt * _mult;
 		}
 	}
 }
@@ -996,6 +991,7 @@ function update_world(_world, _dt) {
 	update_cities(_world, _dt);
 	update_economy(_world, _dt);
 	update_treaties(_world, _dt);
+	update_final_vote(_world, _dt);
 	_world.statsTimer -= _dt;
 	if (_world.statsTimer <= 0) {
 		_world.statsTimer = 1;
@@ -1017,6 +1013,9 @@ function get_building_unit_source(_buildingType) {
 		case BUILDING.HOSPITAL: return UNIT_SRC.HOSPITAL;
 		case BUILDING.PORT: return UNIT_SRC.PORT;
 		case BUILDING.EMBASSY: return UNIT_SRC.EMBASSY;
+		case BUILDING.SIEGE_WORKSHOP: return UNIT_SRC.SIEGE;
+		case BUILDING.TANK_WORKSHOP: return UNIT_SRC.TANK;
+		case BUILDING.AIRFIELD: return UNIT_SRC.AIRFIELD;
 	}
 	return NO_ID;
 }
@@ -1031,25 +1030,18 @@ function get_unit_lock_reason(_world, _owner, _type, _sourceLevel) {
 	if ((_stats.source == UNIT_SRC.CITY_HALL) && (_sourceLevel < _stats.reqCityLevel)) {
 		return "Needs City Lv " + string(_stats.reqCityLevel);
 	}
-	if ((_stats.source == UNIT_SRC.BARRACKS) && (_sourceLevel < _stats.reqBuildingLevel)) {
-		return "Needs Barracks Lv " + string(_stats.reqBuildingLevel);
+	if ((_stats.source != UNIT_SRC.CITY_HALL) && (_sourceLevel < _stats.reqBuildingLevel)) {
+		return "Needs " + get_source_name(_stats.source) + " Lv " + string(_stats.reqBuildingLevel);
 	}
 	return "";
 }
 
 function spawn_unit_near(_world, _owner, _type, _gx, _gy) {
-	var _tile;
-	if (global.unitStats[_type].domain == DOMAIN.WATER) {
-		_tile = find_free_water_near(_world, _gx, _gy, 2);
-	} else {
-		_tile = find_free_tile_near(_world, _gx, _gy, 2);
-	}
+	var _tile = find_spawn_tile(_world, _owner, _type, _gx, _gy, 2);
 	if (_tile == undefined) {
 		return undefined;
 	}
-	var _spawned = create_unit(_world, _owner, _type, _tile[0], _tile[1]);
-	audio_event(_world, "spawn", _type, _tile[0], _tile[1], _owner);
-	return _spawned;
+	return create_unit(_world, _owner, _type, _tile[0], _tile[1]);
 }
 
 // ------------------------------------------------------------
@@ -1126,13 +1118,13 @@ function apply_command(_world, _cmd) {
 			var _attackers = 0;
 			for (var _a = 0; _a < array_length(_cmd.unitIds); _a++) {
 				var _atk = _world.units[_cmd.unitIds[_a]];
-				if (_atk.alive && !unit_is_aboard(_atk) && (_atk.owner == _cmd.owner) && (global.unitStats[_atk.type].damage > 0)) {
+				  if (_atk.alive && !unit_is_aboard(_atk) && (_atk.owner == _cmd.owner) && (global.unitStats[_atk.type].damage > 0) && ((_cmd.targetKind != ORDER.ATTACK_UNIT) || unit_can_target(_atk, _tu))) {
 					give_attack_order(_atk, _cmd.targetKind, _cmd.targetId);
 					_attackers++;
 				}
 			}
 			if (_attackers == 0) {
-				return "These units cannot attack";
+				return "These units cannot attack that target";
 			}
 			return "";
 
@@ -1267,8 +1259,8 @@ function apply_command(_world, _cmd) {
 			if (_state.researched[_cmd.researchId]) {
 				return "Already researched";
 			}
-			if ((_rdef.prereq != NO_ID) && !_state.researched[_rdef.prereq]) {
-				return "Needs: " + global.researchDefs[_rdef.prereq].researchName;
+			if (!research_prereqs_met(_state, _rdef)) {
+				return "Needs: " + get_research_missing_text(_state, _rdef);
 			}
 			if (_state.rp < _rdef.cost) {
 				return "Not enough research points";
@@ -1278,6 +1270,9 @@ function apply_command(_world, _cmd) {
 			return "";
 
 		case CMD.SEND_ENVOY:
+			if (_world.finalVote.phase == FINAL_PHASE.WAR) {
+				return "The final war has begun";
+			}
 			var _embassy = _world.buildings[_cmd.buildingId];
 			var _envoyStats = global.unitStats[UNIT_TYPE.ENVOY];
 			if (!_embassy.alive || (_embassy.owner != _cmd.owner) || (_embassy.type != BUILDING.EMBASSY)) {
@@ -1346,7 +1341,7 @@ function apply_command(_world, _cmd) {
 				}
 			}
 			if (_handled == 0) {
-				return "Select a Traveler Boat first";
+				return "Select a boat or transport plane first";
 			}
 			return _cargoMsg;
 
@@ -1376,11 +1371,20 @@ function apply_command(_world, _cmd) {
 			}
 			_renamed.cityName = _newName;
 			return "";
+			
+		case CMD.FINAL_VOTE:
+			var _fv = _world.finalVote;
+			if (_fv.phase != FINAL_PHASE.VOTING) {
+				return "There is no vote right now";
+			}
+			if (!id_in_list(_fv.nations, _cmd.owner)) {
+				return "You are not part of the vote";
+			}
+			if (_fv.votes[_cmd.owner] != -1) {
+				return "You already voted";
+			}
+			_fv.votes[_cmd.owner] = _cmd.flag ? 1 : 0;
+			return "";
 	}
 	return "Unknown command";
-}
-
-// Envoys live on their own layer, so they walk through other units
-function unit_is_ghost(_unit) {
-	return global.unitStats[_unit.type].diplomat;
 }

@@ -199,6 +199,9 @@ function make_treaty(_a, _b) {
 
 // Called when an envoy reaches the capital of _receiver
 function deliver_treaty(_world, _sender, _receiver) {
+	if (_world.finalVote.phase == FINAL_PHASE.WAR) {
+		return;
+	}
 	var _state = _world.nationStates[_receiver];
 	if (_state.eliminated || _world.nationStates[_sender].eliminated) {
 		return;

@@ -88,6 +88,8 @@ function create_world(_settings) {
 		notices: [],
 		localNation: NO_ID,
 		winner: NO_ID,
+		coWinner: NO_ID,
+		finalVote: make_final_vote(),
 		time: 0,
 		statsTimer: 0,
 		treatyTimer: 0
@@ -222,24 +224,6 @@ function tile_is_water(_world, _gx, _gy) {
 		return false;
 	}
 	return ds_grid_get(_world.biome, _gx, _gy) == BIOME.WATER;
-}
-
-// Land with no unit, city or building on it. Used for spawning and placing things.
-function tile_is_free(_world, _gx, _gy) {
-	if (!tile_is_walkable(_world, _gx, _gy)) {
-		return false;
-	}
-	return (ds_grid_get(_world.unitGrid, _gx, _gy) == NO_ID)
-		&& (ds_grid_get(_world.cityGrid, _gx, _gy) == NO_ID)
-		&& (ds_grid_get(_world.buildingGrid, _gx, _gy) == NO_ID);
-}
-
-// Water with no unit or building on it
-function water_tile_is_free(_world, _gx, _gy) {
-	if (!tile_is_water(_world, _gx, _gy)) {
-		return false;
-	}
-	return (ds_grid_get(_world.unitGrid, _gx, _gy) == NO_ID) && (ds_grid_get(_world.buildingGrid, _gx, _gy) == NO_ID);
 }
 
 // Habitable tiles are the only tiles an explorer can turn into a city

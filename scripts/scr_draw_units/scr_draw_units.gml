@@ -22,10 +22,12 @@ function draw_unit_head(_x, _y, _r) {
 }
 
 function draw_unit(_unit, _selected) {
-	var _worldX = tile_to_world_x(_unit.visGx, _unit.visGy);
-	var _worldY = tile_to_world_y(_unit.visGx, _unit.visGy);
-	matrix_set(matrix_world, matrix_build(_worldX, _worldY, 0, 0, 0, 0, SHAPE_SCALE, SHAPE_SCALE, 1));
 	var _stats = global.unitStats[_unit.type];
+	var _flying = (_stats.domain == DOMAIN.AIR);
+	var _worldX = tile_to_world_x(_unit.visGx, _unit.visGy) + _unit.offX;
+	var _worldY = tile_to_world_y(_unit.visGx, _unit.visGy) + _unit.offY;
+	var _scale = SHAPE_SCALE * _unit.drawScale;
+	matrix_set(matrix_world, matrix_build(_worldX, _worldY, 0, 0, 0, 0, _scale, _scale, 1));
 	var _col = get_owner_colour(_unit.owner);
 	var _tc = get_unit_tier_colour(_stats.tier);
 	var _tier = _stats.tier;
@@ -39,6 +41,11 @@ function draw_unit(_unit, _selected) {
 		draw_set_colour(c_yellow);
 		draw_ellipse(-13, -6, 13, 7, true);
 	}
+	
+	// Aircraft hover above their shadow
+	if (_flying) {
+		matrix_set(matrix_world, matrix_build(_worldX, _worldY - AIR_ALTITUDE, 0, 0, 0, 0, _scale, _scale, 1));
+	}
 
 	// Envoys are drawn a little see through, as nobody targets them by default
 	if (!_stats.targetable) {
@@ -48,6 +55,10 @@ function draw_unit(_unit, _selected) {
 	var _by = -2;
 	if (_stats.domain == DOMAIN.WATER) {
 		draw_boat_unit(_unit.type, _col, _tc);
+	} else if (_flying) {
+		draw_air_unit(_unit.type, _col, _tc);
+	} else if (unit_type_is_machine(_unit.type)) {
+		draw_machine_unit(_unit.type, _col, _tc, _by);
 	} else if (_unit.type == UNIT_TYPE.EXPLORER) {
 		// Round body with a small flag
 		draw_set_colour(_col);

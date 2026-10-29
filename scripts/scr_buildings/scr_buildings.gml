@@ -13,11 +13,6 @@
 // Both default to false, so units walk straight through unless a building says otherwise.
 // ============================================================
 
-function get_building_max_hp(_type, _level) {
-	var _def = global.buildingDefs[_type];
-	return floor(_def.hp * (1 + 0.5 * (_level - 1)));
-}
-
 function create_building(_world, _owner, _type, _gx, _gy, _axis) {
 	var _isEdge = (global.buildingDefs[_type].place == PLACE.EDGE);
 	var _b = {
@@ -176,6 +171,9 @@ function edge_blocks_unit(_world, _ex, _ey, _axis, _unit) {
 
 // Can this unit stand on this kind of terrain
 function unit_terrain_ok(_world, _unit, _gx, _gy) {
+	if (global.unitStats[_unit.type].domain == DOMAIN.AIR) {
+		return tile_in_bounds(_world, _gx, _gy);
+	}
 	// Envoys can stand on land or water (they turn into a boat on water)
 	if (global.unitStats[_unit.type].diplomat) {
 		return tile_is_water(_world, _gx, _gy) || tile_is_walkable(_world, _gx, _gy);
@@ -191,6 +189,9 @@ function unit_terrain_ok(_world, _unit, _gx, _gy) {
 // Can a unit make a single step from one tile to a neighbouring tile.
 // This checks terrain, solid buildings and walls, but not other units standing in the way.
 function unit_step_ok(_world, _unit, _x1, _y1, _x2, _y2) {
+	if (global.unitStats[_unit.type].domain == DOMAIN.AIR) {
+		return tile_in_bounds(_world, _x2, _y2);
+	}
 	if (!unit_terrain_ok(_world, _unit, _x2, _y2)) {
 		return false;
 	}
@@ -486,6 +487,7 @@ function update_buildings(_world, _dt) {
 
 // Called whenever a unit lands on a tile. Naval mines and traps go off for enemy units.
 function trigger_building_on_enter(_world, _unit) {
+	if (unit_is_flyer(_unit)) { return; }
 	var _id = ds_grid_get(_world.buildingGrid, _unit.gx, _unit.gy);
 	if (_id == NO_ID) {
 		return;
@@ -498,4 +500,9 @@ function trigger_building_on_enter(_world, _unit) {
 	remove_building(_world, _b);
 	push_notice(_world, _unit.owner, "A " + _def.buildingName + " went off under your " + global.unitStats[_unit.type].subtitle);
 	damage_unit(_world, _unit, _def.triggerDamage, _b.owner);
+}
+
+function get_building_max_hp(_type, _level) {
+	var _def = global.buildingDefs[_type];
+	return floor(_def.hp * BUILDING_HP_SCALE * (1 + 0.5 * (_level - 1)));
 }

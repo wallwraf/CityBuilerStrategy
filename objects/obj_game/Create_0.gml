@@ -55,6 +55,11 @@ selectedBuildingId = NO_ID;
 panel = PANEL.NONE;
 panelScroll = 0;
 
+researchPanX = 0; researchPanY = 0;
+researchPanPlaced = false;
+researchDrag = false;
+researchDragMx = 0; researchDragMy = 0;
+
 // Building placement mode: placeType is the building being placed, NO_ID when not placing
 // For walls and gates placeGx / placeGy is the edge position and placeAxis is 0 or 1
 placeType = NO_ID;
@@ -80,4 +85,5 @@ camera_init(id);
 menu_init(id);
 menu_start_demo(id);
 net_init();
+end_screen_reset(id);
 audio_init(id);

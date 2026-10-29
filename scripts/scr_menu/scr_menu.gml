@@ -7,7 +7,7 @@
 
 #macro GAME_TITLE "CITY RTS"
 #macro GAME_TAGLINE "Build. Ally. Conquer."
-#macro GAME_VERSION "26.0.0.7b"
+#macro GAME_VERSION "26.0.0.10b"
 
 #macro MENU_ITEM_H 48
 #macro MENU_ITEM_GAP 10
@@ -221,7 +221,7 @@ function menu_get_items(_g) {
 
 		case MENU_PAGE.CONTROLS:
 			array_push(_items, menu_option_slider("Zoom Speed", "zoomSpeed", 1, 10, 1, OPT_APPLY.NONE));
-			array_push(_items, menu_option_slider("Edge Scroll Speed", "panSpeed", 1, 10, 1, OPT_APPLY.NONE));
+			array_push(_items, menu_option_slider("Pan Speed", "panSpeed", 1, 10, 1, OPT_APPLY.NONE));
 			array_push(_items, menu_option_toggle("Invert Zoom", "invertZoom", OPT_APPLY.NONE));
 			array_push(_items, menu_option_toggle("Edge Scrolling", "edgeScroll", OPT_APPLY.NONE));
 			array_push(_items, menu_button("Back", MENU_ACT.BACK, 0));
@@ -240,7 +240,7 @@ function menu_get_items(_g) {
 
 		case MENU_PAGE.HOWTO:
 			array_push(_items, menu_text("Left click selects a unit, city or building. With units selected, click the ground to move or click an enemy to attack."));
-			array_push(_items, menu_text("Drag with left click to box select. Middle mouse pans, the wheel zooms, right click deselects."));
+			array_push(_items, menu_text("Drag with left click to box select. Middle mouse or WASD / arrow keys pan, the wheel zooms, right click deselects."));
 			array_push(_items, menu_text("Explorers found cities on the glowing habitable tiles. Cities grow your border and make gold."));
 			array_push(_items, menu_text("Use the Build tab for barracks, towers, walls and more. Laboratories earn research points."));
 			array_push(_items, menu_text("An Embassy sends envoys to offer peace. Bots decide using their ideology."));
@@ -349,6 +349,7 @@ function menu_add_setup_items(_g, _items, _includeBots) {
 	if (_includeBots) {
 		array_push(_items, menu_option_slider("Bot Factions", "botFactions", 1, MAX_NATIONS - 1, 1, OPT_APPLY.NONE));
 	}
+	array_push(_items, menu_option_choice("AI Difficulty", "aiDifficulty", ["Easy", "Normal", "Hard", "Brutal"], OPT_APPLY.NONE));
 }
 
 function menu_page_title(_page) {
@@ -724,6 +725,7 @@ function menu_start_game(_g) {
 	_g.settings.nationCount = _g.settings.botCount + 1;
 	_g.settings.vacantCount = 0;
 	_g.settings.bandits = (_o.bandits == 1);
+	_g.settings.aiDifficulty = _o.aiDifficulty;
 	menu_begin_world(_g, NO_ID);
 }
 
@@ -739,6 +741,7 @@ function menu_make_settings(_g) {
 	_settings.mapWidth = _o.mapSize;
 	_settings.mapHeight = _o.mapSize;
 	_settings.bandits = (_o.bandits == 1);
+	_settings.aiDifficulty = _o.aiDifficulty;
 	return _settings;
 }
 
@@ -759,6 +762,7 @@ function menu_begin_world(_g, _slot) {
 	_g.panel = PANEL.NONE;
 	_g.placeType = NO_ID;
 	_g.dragging = false;
+	end_screen_reset(_g);
 	_g.renameCityId = NO_ID;
 	_g.menuExitTimer = 0;
 	if (_g.localNation != NO_ID) {

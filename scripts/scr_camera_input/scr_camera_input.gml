@@ -163,6 +163,21 @@ function update_input(_g) {
 			_g.camY += _scroll;
 		}
 	}
+	// WASD and the arrow keys scroll the camera (hold Shift to go faster)
+	if (window_has_focus() && !_g.panning) {
+		var _keyX = (keyboard_check(ord("D")) || keyboard_check(vk_right)) - (keyboard_check(ord("A")) || keyboard_check(vk_left));
+		var _keyY = (keyboard_check(ord("S")) || keyboard_check(vk_down)) - (keyboard_check(ord("W")) || keyboard_check(vk_up));
+		if ((_keyX != 0) || (_keyY != 0)) {
+			var _keySpeed = (300 + global.options.panSpeed * 60) * delta_time / 1000000 / _g.zoom;
+			if (keyboard_check(vk_shift)) {
+				_keySpeed *= 2;
+			}
+			// Normalise so going diagonally is not faster
+			var _len = point_distance(0, 0, _keyX, _keyY);
+			_g.camX += _keyX / _len * _keySpeed;
+			_g.camY += _keyY / _len * _keySpeed;
+		}
+	}
 	camera_clamp_to_map(_g);
 	camera_refresh_view(_g);
 
@@ -233,7 +248,9 @@ function update_input(_g) {
 		}
 		_g.dragging = false;
 	}
-
+	
+	update_research_pan(_g, _mx, _my);
+	
 	// Left press: either a HUD button or the start of a click / drag
 	if (mouse_check_button_pressed(mb_left)) {
 		var _button = get_hud_button_at(_g, _mx, _my);
@@ -326,8 +343,8 @@ function box_select_units(_g, _x1, _y1, _x2, _y2) {
 		if (!_u.alive || unit_is_aboard(_u) || (_u.owner != _g.localNation)) {
 			continue;
 		}
-		var _ux = tile_to_world_x(_u.visGx, _u.visGy);
-		var _uy = tile_to_world_y(_u.visGx, _u.visGy) - 8 * SHAPE_SCALE;
+		var _ux = get_unit_draw_x(_u);
+		var _uy = get_unit_draw_y(_u) - 8 * SHAPE_SCALE;
 		if ((_ux >= _left) && (_ux <= _right) && (_uy >= _top) && (_uy <= _bottom)) {
 			array_push(_picked, _u.unitId);
 		}
@@ -408,7 +425,7 @@ function handle_world_click(_g, _gx, _gy) {
 		}
 	}
 	
-	var _unit = get_unit_at(_world, _gx, _gy);
+	var _unit = pick_unit_at_mouse(_g, _gx, _gy);
 	var _cityId = ds_grid_get(_world.cityGrid, _gx, _gy);
 	var _tileBuilding = get_tile_building(_world, _gx, _gy);
 	if ((_tileBuilding != undefined) && !building_visible_to(_world, _tileBuilding, _local)) {

@@ -254,6 +254,10 @@ function draw_tile_building(_b, _selected, _alpha) {
 			draw_set_colour(_col);
 			draw_triangle(0, -32, 0, -26, 8, -29, false);
 			break;
+			
+		default:
+			draw_expansion_building(_b, _col, _tier, _stone, _wood);
+			break;
 	}
 
 	// Level pips under the building: one per level, coloured by tier

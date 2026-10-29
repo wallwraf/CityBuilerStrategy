@@ -118,13 +118,9 @@ function draw_world(_g) {
 			if (_cityId != NO_ID) {
 				draw_city(_world, _world.cities[_cityId], tile_to_world_x(_gx, _gy), tile_to_world_y(_gx, _gy), (_cityId == _g.selectedCityId));
 			}
-			var _unitId = ds_grid_get(_world.unitGrid, _gx, _gy);
-			if (_unitId != NO_ID) {
-				draw_unit(_world.units[_unitId], id_in_list(_g.selectedUnitIds, _unitId));
-			}
-			var _ghostId = ds_grid_get(_world.ghostGrid, _gx, _gy);
-			if (_ghostId != NO_ID) {
-				draw_unit(_world.units[_ghostId], id_in_list(_g.selectedUnitIds, _ghostId));
+			var _tileUnits = get_units_for_drawing(_world, _gx, _gy);
+			for (var _tu = 0; _tu < array_length(_tileUnits); _tu++) {
+				draw_unit(_tileUnits[_tu], id_in_list(_g.selectedUnitIds, _tileUnits[_tu].unitId));
 			}
 			var _wallX = ds_grid_get(_world.edgeGridX, _gx, _gy);
 			if (_wallX != NO_ID) {
@@ -135,6 +131,18 @@ function draw_world(_g) {
 				draw_building(_world.buildings[_wallY], (_wallY == _g.selectedBuildingId), 1);
 			}
 		}
+	}
+	
+	// Pass 4: aircraft and envoys, drawn above everything else
+	for (var _gi = 0; _gi < array_length(_world.units); _gi++) {
+		var _ghost = _world.units[_gi];
+		if (!_ghost.alive || unit_is_aboard(_ghost) || !unit_is_ghost(_ghost)) {
+			continue;
+		}
+		if ((_ghost.gx < _minGx) || (_ghost.gx > _maxGx) || (_ghost.gy < _minGy) || (_ghost.gy > _maxGy)) {
+			continue;
+		}
+		draw_unit(_ghost, id_in_list(_g.selectedUnitIds, _ghost.unitId));
 	}
 	
 	// Buyable links between path networks, and the route of the selected units
