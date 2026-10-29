@@ -16,3 +16,6 @@ As of 26.0.0.7b, Multiplayer doesn't work. I'm currently debugging, but I think 
 "colossus scared of sand(maybe)" - natan 8/10
 
 "COLLOSSUS IS GOOD" - evil natan 2/10
+
+## Notices
+I am currently doing a [playtest](https://forms.gle/mkDtBPZem5atdfNv9) for ideas on new features, changes, and a gist of what the community wants. Please direct feedback there or on the [Issues thread](https://github.com/wallwraf/CityBuilerStrategy/issues).
