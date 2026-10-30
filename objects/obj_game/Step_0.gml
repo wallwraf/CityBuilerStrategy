@@ -1,4 +1,5 @@
 // Step event of obj_game
+hudCache = undefined;
 
 var _dt = min(delta_time / 1000000, 0.1);
 

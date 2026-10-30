@@ -1,4 +1,5 @@
 // Draw GUI event of obj_game (screen space)
+hudCache = undefined;
 
 if (gameState == GAME_STATE.MENU) {
 	draw_menu(id);

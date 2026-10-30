@@ -836,11 +836,11 @@ function menu_start_demo(_g) {
 
 function menu_update_demo(_g, _dt) {
 	if (_g.demoWarm > 0) {
-		var _steps = 0;
-		while ((_g.demoWarm > 0) && (_steps < 16)) {
+		var _start = get_timer();
+		// At most about 8 ms of simulation per frame, so the menu never stalls
+		while ((_g.demoWarm > 0) && ((get_timer() - _start) < 8000)) {
 			update_world(_g.world, 0.25);
 			_g.demoWarm -= 0.25;
-			_steps++;
 		}
 		if (_g.demoWarm <= 0) {
 			menu_pick_camera_target(_g, true);

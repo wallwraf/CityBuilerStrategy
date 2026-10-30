@@ -225,5 +225,25 @@ function draw_expansion_building(_b, _col, _tier, _stone, _wood) {
 			draw_set_colour(_tier);
 			draw_rectangle(-24, -5, 24, 0, true);
 			break;
+			
+		case BUILDING.HOUSING:
+			// Cottage that gains a floor every two levels, with one dot per level
+			var _hFloors = 1 + (_b.level div 2);
+			var _hTop = -8 * _hFloors;
+			draw_set_colour(_wood);
+			draw_rectangle(-13, _hTop, 13, 0, false);
+			draw_set_colour(_col);
+			draw_triangle(-16, _hTop, 16, _hTop, 0, _hTop - 9, false);
+			draw_set_colour(make_colour_rgb(255, 225, 140));
+			for (var _hf = 0; _hf < _hFloors; _hf++) {
+				draw_rectangle(-8, -6 - _hf * 8, -4, -2 - _hf * 8, false);
+				draw_rectangle(4, -6 - _hf * 8, 8, -2 - _hf * 8, false);
+			}
+			draw_set_colour(_tier);
+			for (var _hl = 0; _hl < _b.level; _hl++) {
+				draw_circle(-7 + _hl * 5, 3, 1.5, false);
+			}
+			draw_rectangle(-13, _hTop, 13, 0, true);
+			break;
 	}
 }

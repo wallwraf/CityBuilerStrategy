@@ -487,6 +487,7 @@ function recalculate_borders(_world) {
 				}
 			}
 		}
+		recalc_path_links(_world);
 	}
 
 	// Count how much land each nation owns (used by the ideology system)

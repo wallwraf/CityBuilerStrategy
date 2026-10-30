@@ -33,13 +33,15 @@ function draw_unit(_unit, _selected) {
 	var _tier = _stats.tier;
 
 	// Shadow and selection ring
-	draw_set_alpha(0.3);
-	draw_set_colour(c_black);
-	draw_ellipse(-9, -3, 9, 4, false);
-	draw_set_alpha(1);
-	if (_selected) {
-		draw_set_colour(c_yellow);
-		draw_ellipse(-13, -6, 13, 7, true);
+	if (!global.lodFar) {
+		draw_set_alpha(0.3);
+		draw_set_colour(c_black);
+		draw_ellipse(-9, -3, 9, 4, false);
+		draw_set_alpha(1);
+		if (_selected) {
+			draw_set_colour(c_yellow);
+			draw_ellipse(-13, -6, 13, 7, true);
+		}
 	}
 	
 	// Aircraft hover above their shadow

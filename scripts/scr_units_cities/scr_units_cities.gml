@@ -46,14 +46,12 @@ function create_unit(_world, _owner, _type, _gx, _gy) {
 		// Tribe units wander around the tile they spawned on
 		homeGx: _gx,
 		homeGy: _gy,
-		wanderTimer: sim_random_range(_world, 2, 6)
+		wanderTimer: sim_random_range(_world, 2, 6),
+		// Throttle
+		nextScan: (array_length(_world.units) mod 10) * 0.03
 	};
 	array_push(_world.units, _unit);
-	if (_stats.diplomat) {
-		ds_grid_set(_world.ghostGrid, _gx, _gy, _unit.unitId);
-	} else {
-		put_unit_on_tile(_world, _unit, _gx, _gy);
-	}
+	put_unit_on_tile(_world, _unit, _gx, _gy);
 	return _unit;
 }
 
@@ -310,19 +308,40 @@ function find_enemy_unit_near(_world, _owner, _gx, _gy, _range, _attackType = NO
 	var _bestDist = 999;
 	for (var _ox = -_range; _ox <= _range; _ox++) {
 		for (var _oy = -_range; _oy <= _range; _oy++) {
-			var _here = get_units_at(_world, _gx + _ox, _gy + _oy, true);
-			for (var _i = 0; _i < array_length(_here); _i++) {
-				var _other = _here[_i];
-				if (!global.unitStats[_other.type].targetable || !are_hostile(_world, _owner, _other.owner)) {
+			var _dist = max(abs(_ox), abs(_oy));
+			if (_dist >= _bestDist) {
+				continue;
+			}
+			var _tx = _gx + _ox;
+			var _ty = _gy + _oy;
+			if (!tile_in_bounds(_world, _tx, _ty)) {
+				continue;
+			}
+			// Ground layer first, then the air layer. Cells are read directly, nothing is allocated.
+			for (var _layer = 0; _layer < 2; _layer++) {
+				var _cell = ds_grid_get((_layer == 0) ? _world.unitGrid : _world.ghostGrid, _tx, _ty);
+				if (!is_array(_cell)) {
 					continue;
 				}
-				if ((_attackType != NO_ID) && !unit_type_can_target(_attackType, _other.type)) {
-					continue;
-				}
-				var _dist = max(abs(_ox), abs(_oy));
-				if (_dist < _bestDist) {
-					_bestDist = _dist;
+				var _found = false;
+				for (var _i = 0; _i < array_length(_cell); _i++) {
+					var _other = _world.units[_cell[_i]];
+					if (!_other.alive || !global.unitStats[_other.type].targetable) {
+						continue;
+					}
+					if (!are_hostile(_world, _owner, _other.owner)) {
+						continue;
+					}
+					if ((_attackType != NO_ID) && !unit_type_can_target(_attackType, _other.type)) {
+						continue;
+					}
 					_best = _other;
+					_bestDist = _dist;
+					_found = true;
+					break;
+				}
+				if (_found) {
+					break;
 				}
 			}
 		}
@@ -631,11 +650,13 @@ function update_units(_world, _dt) {
 function update_unit_order(_world, _u, _stats) {
 	switch (_u.order) {
 		case ORDER.NONE:
-			if (_stats.damage > 0) {
-				unit_auto_attack(_world, _u, _stats);
+			// Units made without the field get it here
+			if (!variable_struct_exists(_u, "nextScan")) {
+				_u.nextScan = 0;
 			}
-			if ((_u.owner == TRIBE_OWNER) && (_u.order == ORDER.NONE)) {
-				update_tribe_wander(_world, _u);
+			if (_world.time >= _u.nextScan) {
+				_u.nextScan = _world.time + 0.3;
+				unit_auto_attack(_world, _u, _stats);
 			}
 			break;
 
@@ -999,6 +1020,7 @@ function update_world(_world, _dt) {
 	}
 	update_battles(_world, _dt);
 	update_bots(_world, _dt);
+	ensure_path_links(_world);
 }
 
 // ------------------------------------------------------------
@@ -1166,6 +1188,10 @@ function apply_command(_world, _cmd) {
 			if (_lock != "") {
 				return _lock;
 			}
+			var _popWhy = get_pop_block_reason(_world, _cmd.owner, _cmd.unitType);
+			if (_popWhy != "") {
+				return _popWhy;
+			}
 			if (_state.gold < _buyStats.cost) {
 				return "Not enough gold";
 			}
@@ -1187,6 +1213,10 @@ function apply_command(_world, _cmd) {
 			var _trainLock = get_unit_lock_reason(_world, _cmd.owner, _cmd.unitType, _site.level);
 			if (_trainLock != "") {
 				return _trainLock;
+			}
+			var _trainPopWhy = get_pop_block_reason(_world, _cmd.owner, _cmd.unitType);
+			if (_trainPopWhy != "") {
+				return _trainPopWhy;
 			}
 			if (_state.gold < _trainStats.cost) {
 				return "Not enough gold";

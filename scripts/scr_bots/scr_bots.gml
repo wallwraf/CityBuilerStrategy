@@ -162,6 +162,16 @@ function run_bot_builder(_world, _owner) {
 
 	// Pick a different city each time so the economy spreads out
 	var _anchor = _cities[sim_irandom(_world, _cityCount - 1)];
+	
+	// Housing when the army is close to the cap
+	if ((count_nation_buildings(_world, _owner, BUILDING.HOUSING) < HOUSING_MAX) && (calc_nation_pop_used(_world, _owner) + 3 >= calc_nation_pop_cap(_world, _owner))) {
+		if (bot_try_build(_world, _owner, BUILDING.HOUSING, _anchor)) {
+			return;
+		}
+		if (_state.gold < global.buildingDefs[BUILDING.HOUSING].cost) {
+			return;
+		}
+	}
 
 	for (var _i = 0; _i < array_length(_econTypes); _i++) {
 		var _type = _econTypes[_i];

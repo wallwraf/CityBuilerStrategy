@@ -52,6 +52,8 @@ debugOverlay = false;
 selectedBuildingId = NO_ID;
 
 // Which side panel is open (PANEL.NONE, BUILD, RESEARCH, DIPLOMACY or IDEOLOGY)
+hudCache = undefined;
+
 panel = PANEL.NONE;
 panelScroll = 0;
 

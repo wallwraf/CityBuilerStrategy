@@ -1,0 +1,12 @@
+{
+  "$GMShader":"",
+  "%Name":"sh_rock",
+  "name":"sh_rock",
+  "parent":{
+    "name":"CityBuilerStrategy",
+    "path":"CityBuilerStrategy.yyp",
+  },
+  "resourceType":"GMShader",
+  "resourceVersion":"2.0",
+  "type":1,
+}

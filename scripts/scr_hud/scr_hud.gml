@@ -51,6 +51,7 @@ function get_unit_tip(_type) {
   	if (_s.domain == DOMAIN.AIR) {
   		_text += "\\nFlies: ignores weight, terrain and walls";
   	}
+	_text += "\\nPopulation " + string(_s.popCost);
 	return _text;
 }
 
@@ -59,6 +60,13 @@ function get_unit_tip(_type) {
 // ------------------------------------------------------------
 
 function get_hud_buttons(_g) {
+	if (_g.hudCache == undefined) {
+		_g.hudCache = build_hud_buttons(_g);
+	}
+	return _g.hudCache;
+}
+
+function build_hud_buttons(_g) {
 	var _list = [];
 	var _world = _g.world;
 	var _local = _g.localNation;
@@ -179,12 +187,17 @@ function add_build_buttons(_g, _list, _state) {
 		}
 		var _needs = ((_def.reqResearch != NO_ID) && !nation_has_research(_world, _local, _def.reqResearch));
 		var _sub = string(_def.cost) + " gold";
+		if (_t == BUILDING.HOUSING) {
+			_sub += "   " + string(count_nation_buildings(_world, _local, _t)) + "/" + string(HOUSING_MAX);
+		}
 		if (_def.solid) {
 			_sub += "   solid";
 		}
 		var _why = "";
 		if (_needs) {
 			_why = "Needs: " + global.researchDefs[_def.reqResearch].researchName;
+		} else if ((_t == BUILDING.HOUSING) && (count_nation_buildings(_world, _local, _t) >= HOUSING_MAX)) {
+			_why = "Limit reached";
 		} else if (_state.gold < _def.cost) {
 			_why = "Not enough gold";
 		}
@@ -411,7 +424,14 @@ function make_unit_button(_world, _local, _state, _type, _level, _action, _siteI
 	if ((_why == "") && (_state.gold < _stats.cost)) {
 		_why = "Not enough gold";
 	}
-	var _sub = (_lock != "") ? _lock : (_stats.subtitle + "  -  " + string(_stats.cost) + "g");
+	if ((_why == "") && (_stats.popCost > 0)) {
+		var _pop = get_pop_cached(_world, _local);
+		if (_pop.used + _stats.popCost > _pop.cap) {
+			_why = "Population full";
+		}
+	}
+	var _popText = (_stats.popCost > 0) ? ("  -  " + string(_stats.popCost) + " pop") : "";
+	var _sub = (_why == "Population full") ? _why : ((_lock != "") ? _lock : (_stats.subtitle + "  -  " + string(_stats.cost) + "g" + _popText));
 	return make_button(get_unit_name(_local, _type), _sub, _action, _type, _siteId, (_why == ""), _why, get_unit_tip(_type));
 }
 
@@ -485,6 +505,7 @@ function hud_captures_mouse(_g, _mx, _my) {
 }
 
 function execute_hud_button(_g, _button) {
+	_g.hudCache = undefined;
 	if (!_button.enabled) {
 		sfx_play("ui_error");
 		if (_button.why != "") {
@@ -659,6 +680,9 @@ function get_selection_lines(_g) {
 			case BUILDING.GATE:
 				array_push(_lines, "Your units walk through it, everyone else is blocked");
 				break;
+			case BUILDING.HOUSING:
+				array_push(_lines, "+" + string(_b.level * HOUSING_POP_PER_LEVEL) + " population");
+				break;
 		}
 		return _lines;
 	}
@@ -758,7 +782,8 @@ function draw_hud(_g) {
 		draw_text(36, TOP_H / 2, get_owner_name(_local)
 			+ "    Gold " + string(floor(_state.gold)) + " (+" + string_format(get_nation_income(_world, _local), 1, 1) + "/s)"
 			+ "    RP " + string(floor(_state.rp)) + " (+" + string_format(get_rp_rate(_world, _local), 1, 1) + "/s)"
-			+ "    Cities " + string(count_nation_cities(_world, _local)));
+			+ "    Cities " + string(count_nation_cities(_world, _local))
+			+ "    Pop " + string(get_pop_cached(_world, _local).used) + "/" + string(get_pop_cached(_world, _local).cap));
 	} else {
 		draw_text(12, TOP_H / 2, "Spectating    Map: " + _world.preset.presetName + "    Seed: " + string(_world.seed));
 	}
