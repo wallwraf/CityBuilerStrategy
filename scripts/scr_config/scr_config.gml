@@ -181,6 +181,7 @@ enum BUILDING {
 	SIEGE_WORKSHOP,
 	TANK_WORKSHOP,
 	AIRFIELD,
+	HOUSING,
 	COUNT
 }
 
@@ -355,6 +356,7 @@ function define_unit(_type, _subtitle, _role, _desc, _source, _cost, _hp, _damag
 		ability: ABILITY.NONE,
 		splash: 0,
 		buildingMult: 0.4,
+		popCost: 1,
 		hitsAir: (_range >= 2),
 		hitsGround: true,
 		healRate: 0,

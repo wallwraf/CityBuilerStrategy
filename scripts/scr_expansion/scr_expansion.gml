@@ -12,6 +12,7 @@ function init_expansion() {
 	init_expansion_buildings();
 	init_expansion_research();
 	apply_balance_changes();
+	init_population_costs();
 	pad_nation_unit_names();
 	global.researchLayout = build_research_layout();
 }
@@ -49,6 +50,8 @@ function init_expansion_buildings() {
 	define_building(BUILDING.SIEGE_WORKSHOP, "Siege Workshop", "Builds battering rams, catapults and mangonels", 200, 3, 200, PLACE.LAND, { reqResearch: RESEARCH.SIEGE_ENGINEERING });
 	define_building(BUILDING.TANK_WORKSHOP, "Tank Workshop", "Builds tanks and rocket artillery", 520, 3, 320, PLACE.LAND, { reqResearch: RESEARCH.ARMOURED_WARFARE });
 	define_building(BUILDING.AIRFIELD, "Airfield", "Builds aircraft. Level 2 and 3 unlock bigger planes", 520, 3, 260, PLACE.LAND, { reqResearch: RESEARCH.AVIATION });
+	// Expansion 2:
+	define_building(BUILDING.HOUSING, "Housing", "Adds population. Upgrade for more. Limited number per nation", 90, 4, 120, PLACE.LAND, {});
 }
 
 // ------------------------------------------------------------

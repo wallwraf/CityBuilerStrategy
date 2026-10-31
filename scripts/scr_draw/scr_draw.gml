@@ -20,6 +20,9 @@ function draw_world(_g) {
 	var _viewMinGy = floor(min(world_to_tile_gy(_x1, _y1), world_to_tile_gy(_x2, _y1), world_to_tile_gy(_x1, _y2), world_to_tile_gy(_x2, _y2))) - 2;
 	var _viewMaxGy = ceil(max(world_to_tile_gy(_x1, _y1), world_to_tile_gy(_x2, _y1), world_to_tile_gy(_x1, _y2), world_to_tile_gy(_x2, _y2))) + 2;
 
+	// Zoomed out: skip the small details
+	global.lodFar = (_g.zoom < 0.55);
+
 	// The map itself, and the larger area that also gets dark ocean around it
 	var _minGx = max(0, _viewMinGx);
 	var _maxGx = min(_world.mapW - 1, _viewMaxGx);
@@ -29,35 +32,15 @@ function draw_world(_g) {
 	var _seaMaxGx = min(_world.mapW - 1 + DEEP_MARGIN, _viewMaxGx);
 	var _seaMinGy = max(-DEEP_MARGIN, _viewMinGy);
 	var _seaMaxGy = min(_world.mapH - 1 + DEEP_MARGIN, _viewMaxGy);
-	var _deepColour = merge_colour(global.biomeColours[BIOME.WATER], c_black, 0.5);
-	var _deepColourAlt = merge_colour(_deepColour, c_black, 0.06);
 
-	// Pass 1: terrain, back to front (with the dark ocean outside the map)
-	for (var _gy = _seaMinGy; _gy <= _seaMaxGy; _gy++) {
-		for (var _gx = _seaMinGx; _gx <= _seaMaxGx; _gx++) {
-			var _cx = tile_to_world_x(_gx, _gy);
-			var _cy = tile_to_world_y(_gx, _gy);
-
-			// Outside the map: dark ocean. It is only drawn, it does not exist in any grid.
-			if (!tile_in_bounds(_world, _gx, _gy)) {
-				draw_diamond(_cx, _cy, _hw, _hh, (((_gx + _gy) mod 2) == 0) ? _deepColourAlt : _deepColour, 1);
-				continue;
-			}
-
-			var _biome = ds_grid_get(_world.biome, _gx, _gy);
-			var _lift = (_biome == BIOME.MOUNTAIN) ? ELEVATION_MOUNTAIN : 0;
-			var _col = global.biomeColours[_biome];
-			if (((_gx + _gy) mod 2) == 0) {
-				_col = merge_colour(_col, c_black, 0.06);
-			}
-
-			// Raised sides for mountains
-			if (_lift > 0) {
-				draw_quad_colour(_cx - _hw, _cy - _lift, _cx, _cy + _hh - _lift, _cx, _cy + _hh, _cx - _hw, _cy, merge_colour(_col, c_black, 0.35), 1);
-				draw_quad_colour(_cx, _cy + _hh - _lift, _cx + _hw, _cy - _lift, _cx + _hw, _cy, _cx, _cy + _hh, merge_colour(_col, c_black, 0.2), 1);
-			}
-			draw_diamond(_cx, _cy - _lift, _hw, _hh, _col, 1);
-		}
+	// Pass 1: terrain (cached in surfaces)
+	// Pass 1: the ground (one shader draw), then the raised mountains on top
+	ground_ensure_globals();
+	if (global.useGroundShader && shader_is_compiled(sh_ground) && shader_is_compiled(sh_rock)) {
+		draw_ground(_world, _x1 - 8, _y1 - 8, _x2 + 8, _y2 + 8);
+		draw_mountains(_world);
+	} else {
+		draw_terrain(_world, _viewMinGx, _viewMaxGx, _viewMinGy, _viewMaxGy);
 	}
 
 	// Pass 2: overlays (borders, resources, habitable markers, hover). Drawn after all terrain so
@@ -67,14 +50,19 @@ function draw_world(_g) {
 			var _cx = tile_to_world_x(_gx, _gy);
 			var _cy = tile_to_world_y(_gx, _gy);
 			var _biome = ds_grid_get(_world.biome, _gx, _gy);
-			var _lift = (_biome == BIOME.MOUNTAIN) ? ELEVATION_MOUNTAIN : 0;
+			var _lift = get_tile_lift(_gx, _gy);
 
 			// Nation border tint and edge lines
 			var _owner = ds_grid_get(_world.borderOwner, _gx, _gy);
 			if (_owner != NO_ID) {
 				var _ownerCol = get_owner_colour(_owner);
 				draw_diamond(_cx, _cy - _lift, _hw, _hh, _ownerCol, 0.22);
-				draw_border_edges(_world, _gx, _gy, _cx, _cy - _lift, _owner, _ownerCol);
+				if (!global.lodFar) {
+					draw_border_edges(_world, _gx, _gy, _cx, _cy - _lift, _owner, _ownerCol);
+				}
+			}
+			if (global.lodFar) {
+				continue;
 			}
 			
 			// Paths sit under everything else
@@ -119,8 +107,10 @@ function draw_world(_g) {
 				draw_city(_world, _world.cities[_cityId], tile_to_world_x(_gx, _gy), tile_to_world_y(_gx, _gy), (_cityId == _g.selectedCityId));
 			}
 			var _tileUnits = get_units_for_drawing(_world, _gx, _gy);
-			for (var _tu = 0; _tu < array_length(_tileUnits); _tu++) {
-				draw_unit(_tileUnits[_tu], id_in_list(_g.selectedUnitIds, _tileUnits[_tu].unitId));
+			if (is_array(ds_grid_get(_world.unitGrid, _gx, _gy))) {
+				for (var _tu = 0; _tu < array_length(_tileUnits); _tu++) {
+					draw_unit(_tileUnits[_tu], id_in_list(_g.selectedUnitIds, _tileUnits[_tu].unitId));
+				}
 			}
 			var _wallX = ds_grid_get(_world.edgeGridX, _gx, _gy);
 			if (_wallX != NO_ID) {

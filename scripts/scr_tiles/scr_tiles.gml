@@ -199,22 +199,19 @@ function find_spawn_tile(_world, _owner, _type, _gx, _gy, _maxRadius) {
 // 1 = centre, 2 = left and right, 3 = triangle, 4 = diamond, 5 = pentagon, 6 = hexagon and so on.
 // ------------------------------------------------------------
 
-// Offsets (in world pixels) and a size factor for one unit
 function get_formation_slot(_world, _unit) {
-	var _grid = get_unit_layer_grid(_world, _unit);
-	var _ids = get_tile_unit_ids(_grid, _unit.gx, _unit.gy);
-	var _count = array_length(_ids);
-	if (_count <= 1) {
+	var _cell = ds_grid_get(get_unit_layer_grid(_world, _unit), _unit.gx, _unit.gy);
+	if (!is_array(_cell) || (array_length(_cell) <= 1)) {
 		return { ox: 0, oy: 0, size: 1 };
 	}
+	var _count = array_length(_cell);
 	var _index = 0;
 	for (var _i = 0; _i < _count; _i++) {
-		if (_ids[_i] == _unit.unitId) {
+		if (_cell[_i] == _unit.unitId) {
 			_index = _i;
 			break;
 		}
 	}
-	// Odd counts point upward (triangle, pentagon), even counts start on the left/right (line, diamond)
 	var _start = ((_count mod 2) == 1) ? -90 : 0;
 	var _angle = _start + _index * (360 / _count);
 	var _size = 1;
@@ -228,8 +225,22 @@ function get_formation_slot(_world, _unit) {
 
 // Presentation only: slides a unit toward its formation slot (called from update_units)
 function update_unit_offset(_world, _unit, _dt) {
-	var _slot = get_formation_slot(_world, _unit);
+	var _cell = ds_grid_get(get_unit_layer_grid(_world, _unit), _unit.gx, _unit.gy);
 	var _k = min(1, _dt * 10);
+	// Alone on its tile: the common case, so no struct and no maths once it has settled
+	if (!is_array(_cell) || (array_length(_cell) <= 1)) {
+		if ((abs(_unit.offX) < 0.05) && (abs(_unit.offY) < 0.05) && (abs(_unit.drawScale - 1) < 0.01)) {
+			_unit.offX = 0;
+			_unit.offY = 0;
+			_unit.drawScale = 1;
+			return;
+		}
+		_unit.offX = lerp(_unit.offX, 0, _k);
+		_unit.offY = lerp(_unit.offY, 0, _k);
+		_unit.drawScale = lerp(_unit.drawScale, 1, _k);
+		return;
+	}
+	var _slot = get_formation_slot(_world, _unit);
 	_unit.offX = lerp(_unit.offX, _slot.ox, _k);
 	_unit.offY = lerp(_unit.offY, _slot.oy, _k);
 	_unit.drawScale = lerp(_unit.drawScale, _slot.size, _k);

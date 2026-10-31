@@ -254,6 +254,9 @@ function can_place_building(_world, _owner, _type, _gx, _gy, _axis) {
 	if (!_def.buildable) {
 		return "This cannot be built";
 	}
+	if ((_type == BUILDING.HOUSING) && (count_nation_buildings(_world, _owner, BUILDING.HOUSING) >= HOUSING_MAX)) {
+		return "Housing limit reached (" + string(HOUSING_MAX) + ")";
+	}
 	if ((_def.reqResearch != NO_ID) && !nation_has_research(_world, _owner, _def.reqResearch)) {
 		return "Needs research: " + global.researchDefs[_def.reqResearch].researchName;
 	}
