@@ -139,6 +139,9 @@ function draw_menu_footer(_g) {
 	if (_g.menuEditing) {
 		_hint = "Type a number (0 = random)     Enter: confirm     Esc: cancel";
 	}
+	if (_g.menuRebind != NO_ID) {
+		_hint = "Press the new key     Esc: cancel";
+	}
 	draw_text(28, _g.screenH - 36, _hint);
 	draw_text(28, _g.screenH - 14, "Build " + GAME_VERSION);
 }

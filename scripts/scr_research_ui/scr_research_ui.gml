@@ -43,7 +43,7 @@ function update_research_pan(_g, _mx, _my) {
 
 	var _wheel = mouse_wheel_up() - mouse_wheel_down();
 	if (_inView && (_wheel != 0)) {
-		if (keyboard_check(vk_shift)) {
+		if (keybind_check(KEY_ACT.MODIFIER)) {
 			_g.researchPanX -= _wheel * 90;
 		} else {
 			_g.researchPanY -= _wheel * 90;

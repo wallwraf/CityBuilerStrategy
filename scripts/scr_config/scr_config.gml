@@ -429,7 +429,7 @@ function init_unit_stats() {
 	define_unit(UNIT_TYPE.ENVOY, "Envoy", "Special", "Carries a peace treaty to a capital. Walks through units and gates, and sails across water", UNIT_SRC.EMBASSY, 40, 15, 0, 1, 1, 1.0, 1.0, { tier: 0, passSolid: true, targetable: false, diplomat: true, ability: ABILITY.ENVOY });
 	define_unit(UNIT_TYPE.ENVOY_BOAT, "Envoy Boat", "Special", "An envoy at sea. Naval mines still sink it", UNIT_SRC.NONE, 40, 15, 0, 1, 1, 1.0, 1.0, { tier: 0, domain: DOMAIN.WATER, passSolid: true, targetable: false, diplomat: true, ability: ABILITY.ENVOY });
 	// Port: carries land units across the water (press E next to units to load them, E again to unload)
-	define_unit(UNIT_TYPE.TRAVELER_BOAT, "Traveler Boat", "Special", "Press E to load land units within 1 tile, E again to unload", UNIT_SRC.PORT, 140, 80, 0, 1, 1, 1.0, 1.0, { tier: 0, domain: DOMAIN.WATER, capacity: 6 });
+	define_unit(UNIT_TYPE.TRAVELER_BOAT, "Traveler Boat", "Special", "Use the cargo key to load land units within 1 tile, and again to unload", UNIT_SRC.PORT, 140, 80, 0, 1, 1, 1.0, 1.0, { tier: 0, domain: DOMAIN.WATER, capacity: 6 });
 
 	// Weight: every unit weighs 1 or more. A boat holds up to its capacity, and a tile only
 	// holds units up to its weight limit (see get_tile_weight_limit). Flyers and envoys cannot be carried.

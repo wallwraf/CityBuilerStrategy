@@ -164,20 +164,7 @@ function update_input(_g) {
 		}
 	}
 	// WASD and the arrow keys scroll the camera (hold Shift to go faster)
-	if (window_has_focus() && !_g.panning) {
-		var _keyX = (keyboard_check(ord("D")) || keyboard_check(vk_right)) - (keyboard_check(ord("A")) || keyboard_check(vk_left));
-		var _keyY = (keyboard_check(ord("S")) || keyboard_check(vk_down)) - (keyboard_check(ord("W")) || keyboard_check(vk_up));
-		if ((_keyX != 0) || (_keyY != 0)) {
-			var _keySpeed = (300 + global.options.panSpeed * 60) * delta_time / 1000000 / _g.zoom;
-			if (keyboard_check(vk_shift)) {
-				_keySpeed *= 2;
-			}
-			// Normalise so going diagonally is not faster
-			var _len = point_distance(0, 0, _keyX, _keyY);
-			_g.camX += _keyX / _len * _keySpeed;
-			_g.camY += _keyY / _len * _keySpeed;
-		}
-	}
+	update_keyboard_camera(_g);
 	camera_clamp_to_map(_g);
 	camera_refresh_view(_g);
 
@@ -195,7 +182,7 @@ function update_input(_g) {
 	}
 
 	prune_selection(_g);
-	if (keyboard_check_pressed(vk_f2) && (_g.selectedCityId != NO_ID) && (_g.world.cities[_g.selectedCityId].owner == _g.localNation)) {
+	if (keybind_pressed(KEY_ACT.RENAME) && (_g.selectedCityId != NO_ID) && (_g.world.cities[_g.selectedCityId].owner == _g.localNation)) {
 		rename_begin(_g, _g.selectedCityId);
 	}
 	if (_g.gameState == GAME_STATE.PLAYING) {
@@ -204,7 +191,7 @@ function update_input(_g) {
 	update_placement_preview(_g);
 
 	// E loads / unloads the selected Traveler Boats
-	if (keyboard_check_pressed(ord("E"))) {
+	if (keybind_pressed(KEY_ACT.CARGO)) {
 		var _cargoCmd = make_command(CMD.TOGGLE_CARGO, _g.localNation);
 		for (var _s = 0; _s < array_length(_g.selectedUnitIds); _s++) {
 			var _sel = _g.world.units[_g.selectedUnitIds[_s]];
@@ -381,7 +368,7 @@ function handle_world_click(_g, _gx, _gy) {
 		_build.gx = _g.placeGx;
 		_build.gy = _g.placeGy;
 		_build.axis = _g.placeAxis;
-		if ((run_player_command(_g, _build) == "") && !keyboard_check(vk_shift) && (global.buildingDefs[_g.placeType].place != PLACE.PATH)) {
+		if ((run_player_command(_g, _build) == "") && !keybind_check(KEY_ACT.MODIFIER) && (global.buildingDefs[_g.placeType].place != PLACE.PATH)) {
 			_g.placeType = NO_ID;
 		}
 		return;
@@ -443,7 +430,7 @@ function handle_world_click(_g, _gx, _gy) {
 
 	// Click one of your units: select it (shift toggles)
 	if ((_unit != undefined) && (_unit.owner == _local) && (_edgeBuilding == undefined)) {
-		if (keyboard_check(vk_shift)) {
+		if (keybind_check(KEY_ACT.MODIFIER)) {
 			if (id_in_list(_g.selectedUnitIds, _unit.unitId)) {
 				var _kept = [];
 				for (var _i = 0; _i < array_length(_g.selectedUnitIds); _i++) {

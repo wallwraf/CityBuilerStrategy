@@ -12,7 +12,7 @@ enum OPT_APPLY {
 }
 
 function get_default_options() {
-	return {
+	var _options = {
 		// Video. windowSize 0 leaves the window alone, 1 and up pick from get_window_sizes()
 		fullscreen: 0,
 		windowSize: 0,
@@ -38,6 +38,8 @@ function get_default_options() {
 		aiDifficulty: 1,
 		botFactions: 3
 	};
+	add_default_keybinds(_options);
+	return _options;
 }
 
 function get_window_sizes() {

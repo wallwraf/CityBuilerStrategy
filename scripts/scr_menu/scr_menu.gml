@@ -28,6 +28,7 @@ enum MENU_PAGE {
 	VIDEO,
 	AUDIO,
 	CONTROLS,
+	KEYBINDS,
 	ACCESSIBILITY,
 	GAMEPLAY,
 	HOWTO,
@@ -54,7 +55,9 @@ enum MENU_ACT {
 	LOBBY_SLOT,
 	LOBBY_COPY,
 	LOBBY_START,
-	LOBBY_CANCEL
+	LOBBY_CANCEL,
+	KEYBIND,
+	KEYBINDS_RESET
 }
 
 enum MENU_KIND {
@@ -63,7 +66,8 @@ enum MENU_KIND {
 	TOGGLE,
 	SLIDER,
 	SEED,
-	TEXT
+	TEXT,
+	KEYBIND
 }
 
 // ------------------------------------------------------------
@@ -86,6 +90,7 @@ function menu_init(_g) {
 	_g.menuExitTimer = 0;
 	_g.menuCode = "";
 	_g.menuEditCode = false;
+	_g.menuRebind = NO_ID;
 	menu_reset_page(_g);
 }
 
@@ -97,6 +102,7 @@ function menu_reset_page(_g) {
 	_g.menuEditing = false;
 	_g.menuDragSlider = NO_ID;
 	_g.menuFocus = menu_first_focus(menu_get_items(_g));
+	_g.menuRebind = NO_ID;
 }
 
 function menu_panel_width(_g) {
@@ -224,6 +230,16 @@ function menu_get_items(_g) {
 			array_push(_items, menu_option_slider("Pan Speed", "panSpeed", 1, 10, 1, OPT_APPLY.NONE));
 			array_push(_items, menu_option_toggle("Invert Zoom", "invertZoom", OPT_APPLY.NONE));
 			array_push(_items, menu_option_toggle("Edge Scrolling", "edgeScroll", OPT_APPLY.NONE));
+			array_push(_items, menu_option_toggle("Arrow Keys Move Camera", "arrowKeys", OPT_APPLY.NONE));
+			array_push(_items, menu_button("Keybinds", MENU_ACT.OPEN_PAGE, MENU_PAGE.KEYBINDS));
+			array_push(_items, menu_button("Back", MENU_ACT.BACK, 0));
+			break;
+			
+		case MENU_PAGE.KEYBINDS:
+			for (var _a = 0; _a < KEY_ACT.COUNT; _a++) {
+				array_push(_items, menu_keybind(_g, _a));
+			}
+			array_push(_items, menu_button("Reset Keybinds", MENU_ACT.KEYBINDS_RESET, 0));
 			array_push(_items, menu_button("Back", MENU_ACT.BACK, 0));
 			break;
 
@@ -359,6 +375,7 @@ function menu_page_title(_page) {
 		case MENU_PAGE.VIDEO: return "SETTINGS  /  VIDEO AND DISPLAY";
 		case MENU_PAGE.AUDIO: return "SETTINGS  /  AUDIO";
 		case MENU_PAGE.CONTROLS: return "SETTINGS  /  CONTROLS";
+		case MENU_PAGE.KEYBINDS: return "SETTINGS / CONTROLS / KEYBINDS";
 		case MENU_PAGE.ACCESSIBILITY: return "SETTINGS  /  ACCESSIBILITY";
 		case MENU_PAGE.GAMEPLAY: return "SETTINGS  /  GAMEPLAY";
 		case MENU_PAGE.HOWTO: return "HOW TO PLAY";
@@ -550,6 +567,14 @@ function menu_activate(_g, _item) {
 				menu_adjust(_g, _item, 1);
 			}
 			break;
+		case MENU_ACT.KEYBIND:
+			_g.menuRebind = _item.arg;
+			keyboard_lastkey = KEY_NONE;
+			break;
+		case MENU_ACT.KEYBINDS_RESET:
+			reset_keybinds();
+			set_toast(_g, "Keybinds reset");
+			break;
 		case MENU_ACT.HOST_NEXT:
 			save_options();
 			if (net_host_open(_g)) {
@@ -631,6 +656,13 @@ function menu_update(_g, _dt) {
 
 	if (_g.menuEditing) {
 		menu_update_seed_edit(_g);
+		menu_update_anim(_g, _count, _dt);
+		return;
+	}
+	
+	// Waiting for a new key
+	if (_g.menuRebind != NO_ID) {
+		menu_update_rebind(_g);
 		menu_update_anim(_g, _count, _dt);
 		return;
 	}
@@ -911,4 +943,14 @@ function menu_update_camera(_g, _dt) {
 	_g.camX = _g.menuFocusX - _screenX / _g.zoom;
 	_g.camY = _g.menuFocusY - (_g.screenH / 2) / _g.zoom;
 	camera_refresh_view(_g);
+}
+
+// A row in the keybinds page: the action on the left, its key on the right
+function menu_keybind(_g, _act) {
+	var _item = make_menu_item(MENU_KIND.KEYBIND, get_keybind_label(_act));
+	_item.act = MENU_ACT.KEYBIND;
+	_item.arg = _act;
+	_item.h = 36;
+	_item.value = (_g.menuRebind == _act) ? "Press a key..." : keybind_name(_act);
+	return _item;
 }

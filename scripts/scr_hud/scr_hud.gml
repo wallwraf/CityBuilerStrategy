@@ -375,7 +375,7 @@ function add_bottom_buttons(_g, _list, _state) {
 			var _capacity = global.unitStats[_carrier.type].capacity;
 			var _used = get_boat_cargo_weight(_world, _carrier);
 			var _hasCargo = (array_length(_carrier.cargo) > 0);
-			array_push(_items, make_button(_hasCargo ? "Unload (E)" : "Load (E)", "Weight " + string(_used) + "/" + string(_capacity), UI_ACT.TOGGLE_CARGO, _carrier.unitId, NO_ID, true, "", "Load: takes every land unit of your nation within 1 tile\\nUnload: puts them on free tiles within 1 tile"));
+			array_push(_items, make_button(_hasCargo ? "Unload (" + keybind_name(KEY_ACT.CARGO) + ")" : "Load (" + keybind_name(KEY_ACT.CARGO) + ")", "Weight " + string(_used) + "/" + string(_capacity), UI_ACT.TOGGLE_CARGO, _carrier.unitId, NO_ID, true, "", "Load: takes every land unit of your nation within 1 tile\\nUnload: puts them on free tiles within 1 tile"));
 		}
 		var _boat = get_selected_boat(_g);
 		if (_boat != undefined) {
